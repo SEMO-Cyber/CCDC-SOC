@@ -75,6 +75,15 @@ Write-Host "[OK] Splunk Universal Forwarder installed" -ForegroundColor Green
 $inputsConfPath = "$INSTALL_DIR\etc\system\local\inputs.conf"
 Write-Host "Configuring inputs.conf for monitoring..."
 @"
+## -----------------------------------------------------------------------------
+# Testing
+# -----------------------------------------------------------------------------
+
+[monitor://C:\temp\test.log]
+disabled = 0
+index = windows
+sourcetype = test
+
 # -----------------------------------------------------------------------------
 # Standard Windows Event Logs
 # -----------------------------------------------------------------------------
@@ -106,8 +115,7 @@ index = windows
 sourcetype = WinEventLog:Sysmon
 
 # -----------------------------------------------------------------------------
-# Lateral Movement Detection (pairs with Zeek AD attack suite)
-# Required by Enable-NetworkVisibility.ps1 audit policies
+# Additional Lateral Movement (WinRM, WMI, SMB, AtExec)
 # -----------------------------------------------------------------------------
 
 [WinEventLog://Microsoft-Windows-PowerShell/Operational]
@@ -115,10 +123,20 @@ disabled = 0
 index = windows
 sourcetype = WinEventLog:PowerShell
 
+[WinEventLog://Microsoft-Windows-WinRM/Operational]
+disabled = 0
+index = windows
+sourcetype = WinEventLog:WinRM
+
 [WinEventLog://Microsoft-Windows-WMI-Activity/Operational]
 disabled = 0
 index = windows
 sourcetype = WinEventLog:WMI
+
+[WinEventLog://Microsoft-Windows-SMBServer/Operational]
+disabled = 0
+index = windows
+sourcetype = WinEventLog:SMB
 
 [WinEventLog://Microsoft-Windows-TaskScheduler/Operational]
 disabled = 0
@@ -126,33 +144,30 @@ index = windows
 sourcetype = WinEventLog:TaskScheduler
 
 # -----------------------------------------------------------------------------
-# Security Tools (Suricata, Yara)
-# Splunk will gracefully ignore paths that do not exist.
+# Scored Services
 # -----------------------------------------------------------------------------
 
-[monitor://C:\Program Files\Suricata\log\eve.json]
+# This doesn't work :(
+[WinEventLog://Microsoft-Windows-DNSServer/Analytical]
 disabled = 0
-index = windows
-sourcetype = suricata:eve
+index = services
+renderXml = 1
+sourcetype = msdns:analytical
 
-[monitor://C:\Program Files\Suricata\log\fast.log]
+[monitor://C:\Windows\System32\dns\dns*.log]
 disabled = 0
-index = windows
-sourcetype = suricata:fast
+index = services
+sourcetype = ms:dns:debug
 
-[monitor://C:\ProgramData\Yara\yara_scans.log]
+[monitor://C:\inetpub\logs\LogFiles\W3SVC*\*.log]
 disabled = 0
-index = windows
-sourcetype = yara
+index = services
+sourcetype = ms:iis:auto
 
-# -----------------------------------------------------------------------------
-# Test Log
-# -----------------------------------------------------------------------------
-
-[monitor://C:\tmp\test.log]
+[monitor://C:\inetpub\logs\LogFiles\FTPSVC*\*.log]
 disabled = 0
-index = windows
-sourcetype = test
+index = services
+sourcetype = ms:iis:auto
 "@ | Out-File -FilePath $inputsConfPath -Encoding ASCII
 
 # Configure server.conf to use the specified hostname

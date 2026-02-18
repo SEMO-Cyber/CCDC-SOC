@@ -1,0 +1,594 @@
+<form version="1.1">
+  <label>Honeypot Intelligence (Cowrie)</label>
+  <description>Comprehensive honeypot analysis - sessions, credentials, commands, downloads</description>
+
+  <fieldset submitButton="false" autoRun="true">
+    <input type="time" token="time_token">
+      <label>Time Range</label>
+      <default>
+        <earliest>-4h@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="src_filter">
+      <label>Source IP Filter</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="session_token">
+      <label>Session ID</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <!-- ============================================================ -->
+  <!-- Row 1: 5 KPI Score Cards -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <single>
+        <title>Total Sessions</title>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$
+| spath eventid
+| where eventid=="cowrie.session.connect"
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[50,200]</option>
+        <option name="underLabel">Session Connections</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Unique Source IPs</title>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$
+| spath src_ip
+| stats dc(src_ip) as count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,50]</option>
+        <option name="underLabel">Distinct Attackers</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Unique Credentials</title>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$ eventid IN ("cowrie.login.failed", "cowrie.login.success")
+| spath
+| eval combo=username . "/" . password
+| stats dc(combo) as count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[20,100]</option>
+        <option name="underLabel">User/Pass Combos</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Commands Executed</title>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$
+| spath eventid
+| where eventid=="cowrie.command.input"
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[50,500]</option>
+        <option name="underLabel">Attacker Commands</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Files Downloaded</title>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$
+| spath eventid
+| where eventid=="cowrie.session.file_download"
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="underLabel">Malware Drops</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 2: Session Timeline + Attack Phase Funnel -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Session Timeline by Source IP</title>
+      <chart>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$
+| spath eventid
+| spath src_ip
+| where eventid=="cowrie.session.connect"
+| timechart span=5m count by src_ip limit=10
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Attack Phase Funnel</title>
+      <table>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$
+| spath eventid
+| eval phase=case(
+    eventid=="cowrie.session.connect", "1 - Connect",
+    eventid=="cowrie.login.failed" OR eventid=="cowrie.login.success", "2 - Login Attempt",
+    eventid=="cowrie.command.input" OR eventid=="cowrie.command.failed", "3 - Command Input",
+    eventid=="cowrie.session.file_download", "4 - File Download",
+    1=1, "Other"
+)
+| stats count by phase
+| append [
+    search index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.login.success"
+    | spath
+    | stats count
+    | eval phase="2a - Login Success"
+]
+| where phase!="Other"
+| sort phase
+| rename phase as "Attack Phase", count as "Events"
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Events">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 3: Top Source IPs + Credential First Seen Timeline -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Top Source IPs</title>
+      <table>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$
+| spath
+| eval combo=if(eventid IN ("cowrie.login.failed","cowrie.login.success"), username . "/" . password, null())
+| eval is_cmd=if(eventid=="cowrie.command.input", 1, 0)
+| eval is_download=if(eventid=="cowrie.session.file_download", 1, 0)
+| eval is_session=if(eventid=="cowrie.session.connect", 1, 0)
+| stats sum(is_session) as sessions, dc(combo) as unique_creds, sum(is_cmd) as commands, sum(is_download) as downloads, min(_time) as first_seen, max(_time) as last_seen by src_ip
+| eval first_seen=strftime(first_seen, "%m/%d %H:%M:%S"), last_seen=strftime(last_seen, "%m/%d %H:%M:%S")
+| sort -sessions
+| rename src_ip as "Source IP", sessions as "Sessions", unique_creds as "Unique Creds", commands as "Commands", downloads as "Downloads", first_seen as "First Seen", last_seen as "Last Seen"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Sessions">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="Downloads">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <drilldown>
+          <set token="src_filter">$row.Source IP$</set>
+        </drilldown>
+      </table>
+    </panel>
+    <panel>
+      <title>Credential First Seen Timeline</title>
+      <chart>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$ eventid IN ("cowrie.login.failed", "cowrie.login.success")
+| spath
+| dedup username, password
+| timechart span=15m count as "New Credentials"
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.fieldColors">{"New Credentials":#F1813F}</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 4: Top Credentials + Spray vs Stuff Analysis -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Top Username/Password Combos</title>
+      <table>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$ eventid IN ("cowrie.login.failed", "cowrie.login.success")
+| spath
+| stats count as total, count(eval(eventid=="cowrie.login.success")) as success_count, count(eval(eventid=="cowrie.login.failed")) as fail_count, dc(src_ip) as sources by username, password
+| eval status=if(success_count&gt;0, "BREACHED", "Failed")
+| sort -total
+| rename username as "Username", password as "Password", total as "Total", success_count as "Successes", fail_count as "Failures", sources as "Source IPs", status as "Status"
+| head 25
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Status">
+          <colorPalette type="map">{"BREACHED":#DC4E41,"Failed":#708794}</colorPalette>
+        </format>
+        <format type="color" field="Total">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Spray vs Stuff Analysis</title>
+      <table>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.login.failed"
+| spath
+| stats dc(username) as targets by password
+| where targets &gt; 3
+| sort -targets
+| eval type="Password Spray"
+| rename password as "Value", targets as "Count"
+| head 10
+| append [
+    search index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.login.failed"
+    | spath
+    | stats dc(password) as attempts by username
+    | where attempts &gt; 3
+    | sort -attempts
+    | eval type="Credential Stuffing"
+    | rename username as "Value", attempts as "Count"
+    | head 10
+]
+| table type, Value, Count
+| rename type as "Attack Type"
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Attack Type">
+          <colorPalette type="map">{"Password Spray":#F1813F,"Credential Stuffing":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="Count">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#F8BE34"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 5: Command Frequency + Command Categorization -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Command Frequency</title>
+      <table>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.command.input"
+| spath input
+| stats count by input
+| sort -count
+| rename input as "Command", count as "Count"
+| head 25
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Count">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Command Categorization</title>
+      <chart>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.command.input"
+| spath input
+| eval category=case(
+    match(input, "^(whoami|id|uname|hostname|ifconfig|ip a|cat /etc/passwd|cat /etc/shadow|ps |netstat|ss |w$|who$|last |df |mount|lsb_release|cat /proc)"), "Recon",
+    match(input, "^(crontab|useradd|adduser|usermod|chmod|chown|echo.*&gt;&gt;|sed.*-i|systemctl enable|chkconfig)"), "Persistence",
+    match(input, "^(wget|curl|tftp|scp|ftp|fetch|nc )"), "Download",
+    match(input, "^(ssh|scp|telnet|rsh|rlogin)"), "Lateral Movement",
+    match(input, "^(rm |kill|pkill|shutdown|reboot|halt|init 0|dd if=)"), "Destructive",
+    1=1, "Other"
+)
+| stats count by category
+| sort -count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.fieldColors">{"Recon":#006D9C,"Persistence":#F1813F,"Download":#DC4E41,"Lateral Movement":#F8BE34,"Destructive":#DC4E41,"Other":#708794}</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 6: Session Replay -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Session Replay</title>
+      <table>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$ session=$session_token$
+| spath
+| eval action_type=case(
+    eventid=="cowrie.session.connect", "CONNECT",
+    eventid=="cowrie.login.success", "LOGIN OK",
+    eventid=="cowrie.login.failed", "LOGIN FAIL",
+    eventid=="cowrie.command.input", "COMMAND",
+    eventid=="cowrie.command.failed", "CMD FAIL",
+    eventid=="cowrie.session.file_download", "DOWNLOAD",
+    eventid=="cowrie.session.closed", "DISCONNECT",
+    1=1, "INFO"
+)
+| eval action=case(
+    eventid=="cowrie.session.connect", "SESSION START from " . src_ip,
+    eventid=="cowrie.login.success", "LOGIN OK: " . username . "/" . password,
+    eventid=="cowrie.login.failed", "LOGIN FAIL: " . username . "/" . password,
+    eventid=="cowrie.command.input", "$ " . input,
+    eventid=="cowrie.command.failed", "$ [FAIL] " . input,
+    eventid=="cowrie.session.file_download", "DOWNLOAD: " . url,
+    eventid=="cowrie.session.closed", "SESSION END (duration: " . duration . "s)",
+    1=1, eventid . ": " . message
+)
+| table _time, session, action_type, action
+| sort +_time
+| rename session as "Session ID", action_type as "Type", action as "Action"
+| head 200
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Type">
+          <colorPalette type="map">{"CONNECT":#53A051,"LOGIN OK":#53A051,"LOGIN FAIL":#DC4E41,"COMMAND":#006D9C,"CMD FAIL":#F1813F,"DOWNLOAD":#DC4E41,"DISCONNECT":#708794,"INFO":#708794}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 7: Downloaded Files + Download Source URLs -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Downloaded Files</title>
+      <table>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.session.file_download"
+| spath
+| table _time, src_ip, url, outfile, shasum
+| sort -_time
+| rename src_ip as "Source IP", url as "URL", outfile as "Local File", shasum as "SHA256"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Download Source URLs</title>
+      <table>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.session.file_download"
+| spath
+| stats count, values(shasum) as hashes, dc(src_ip) as sources by url
+| sort -count
+| rename url as "URL", count as "Downloads", hashes as "SHA256 Hashes", sources as "Source IPs"
+| head 15
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Downloads">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#F8BE34"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <drilldown>
+          <link target="_blank">https://www.virustotal.com/gui/search/$row.SHA256 Hashes$</link>
+        </drilldown>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 8: Geographic Source Analysis -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Geographic Source Analysis</title>
+      <map>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$
+| spath src_ip
+| iplocation src_ip
+| geostats count by src_ip
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="mapping.type">marker</option>
+        <option name="height">400</option>
+        <option name="mapping.map.center">(30,0)</option>
+        <option name="mapping.map.zoom">2</option>
+        <option name="refresh.display">progressbar</option>
+      </map>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 9: Geo Table Breakdown -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Attacker Geography</title>
+      <table>
+        <search>
+          <query>
+index=linux sourcetype=cowrie src_ip=$src_filter$
+| spath src_ip
+| iplocation src_ip
+| stats count, dc(src_ip) as unique_ips, values(src_ip) as ips by Country, Region, City
+| sort -count
+| rename count as "Events", unique_ips as "Unique IPs", ips as "IP Addresses", Country as "Country", Region as "Region", City as "City"
+| head 25
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Events">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="Unique IPs">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+</form>
