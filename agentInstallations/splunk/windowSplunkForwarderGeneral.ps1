@@ -38,6 +38,12 @@ $RECEIVER_PORT = "9997"
 # Check for existing installation
 if (Test-Path "$INSTALL_DIR\bin\splunk.exe") {
     Write-Host "[OK] Existing Splunk Universal Forwarder found at $INSTALL_DIR - skipping install, updating configuration" -ForegroundColor Cyan
+    # Ensure service runs as LocalSystem (needed to read Sysmon, SMBServer, and other protected event logs)
+    $svcAccount = (Get-WmiObject Win32_Service -Filter "Name='SplunkForwarder'").StartName
+    if ($svcAccount -ne "LocalSystem") {
+        Write-Host "Changing SplunkForwarder service account from '$svcAccount' to LocalSystem..."
+        sc.exe config SplunkForwarder obj= LocalSystem | Out-Null
+    }
 } else {
     # Download Splunk Universal Forwarder MSI
     Write-Host "Downloading Splunk Universal Forwarder MSI..."
@@ -60,7 +66,7 @@ if (Test-Path "$INSTALL_DIR\bin\splunk.exe") {
     # Install Splunk Universal Forwarder
     Write-Host "Installing Splunk Universal Forwarder..."
     # The $INDEXER_IP variable will be pulled from the parameters
-    $msiArgs = "/i `"$SPLUNK_MSI_PATH`" AGREETOLICENSE=Yes SPLUNKPASSWORD=$SplunkPassword RECEIVING_INDEXER=${INDEXER_IP}:${RECEIVER_PORT} /quiet"
+    $msiArgs = "/i `"$SPLUNK_MSI_PATH`" AGREETOLICENSE=Yes SPLUNKPASSWORD=$SplunkPassword RECEIVING_INDEXER=${INDEXER_IP}:${RECEIVER_PORT} LOGON_USERNAME=LocalSystem /quiet"
     $install = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru
     if ($install.ExitCode -ne 0) {
         Write-Host "[ERROR] MSI install failed with exit code $($install.ExitCode)" -ForegroundColor Red
