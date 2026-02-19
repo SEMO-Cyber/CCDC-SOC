@@ -35,41 +35,49 @@ $INSTALL_DIR = "C:\Program Files\SplunkUniversalForwarder"
 # $INDEXER_IP is now defined in the param() block at the top
 $RECEIVER_PORT = "9997"
 
-# Download Splunk Universal Forwarder MSI
-Write-Host "Downloading Splunk Universal Forwarder MSI..."
-# Ensure TLS 1.2 is available (older PowerShell defaults to TLS 1.0 which download.splunk.com rejects)
-[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-#take away the progress bar, but drastically speeds up downloads on older powershell versions
-$ProgressPreference = 'SilentlyContinue'
-try {
-    Invoke-WebRequest -Uri $SPLUNK_DOWNLOAD_URL -OutFile $SPLUNK_MSI_PATH
-} catch {
-    Write-Host "[ERROR] Failed to download Splunk UF: $_" -ForegroundColor Red
-    exit 1
-}
+# Check for existing installation
+if (Test-Path "$INSTALL_DIR\bin\splunk.exe") {
+    Write-Host "[OK] Existing Splunk Universal Forwarder found at $INSTALL_DIR - skipping install, updating configuration" -ForegroundColor Cyan
+} else {
+    # Download Splunk Universal Forwarder MSI
+    Write-Host "Downloading Splunk Universal Forwarder MSI..."
+    # Ensure TLS 1.2 is available (older PowerShell defaults to TLS 1.0 which download.splunk.com rejects)
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    #take away the progress bar, but drastically speeds up downloads on older powershell versions
+    $ProgressPreference = 'SilentlyContinue'
+    try {
+        Invoke-WebRequest -Uri $SPLUNK_DOWNLOAD_URL -OutFile $SPLUNK_MSI_PATH
+    } catch {
+        Write-Host "[ERROR] Failed to download Splunk UF: $_" -ForegroundColor Red
+        exit 1
+    }
 
-if (-not (Test-Path $SPLUNK_MSI_PATH)) {
-    Write-Host "[ERROR] MSI not found at $SPLUNK_MSI_PATH after download" -ForegroundColor Red
-    exit 1
-}
+    if (-not (Test-Path $SPLUNK_MSI_PATH)) {
+        Write-Host "[ERROR] MSI not found at $SPLUNK_MSI_PATH after download" -ForegroundColor Red
+        exit 1
+    }
 
-# Install Splunk Universal Forwarder
-Write-Host "Installing Splunk Universal Forwarder..."
-# The $INDEXER_IP variable will be pulled from the parameters
-$msiArgs = "/i `"$SPLUNK_MSI_PATH`" AGREETOLICENSE=Yes SPLUNKPASSWORD=$SplunkPassword RECEIVING_INDEXER=${INDEXER_IP}:${RECEIVER_PORT} /quiet"
-$install = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru
-if ($install.ExitCode -ne 0) {
-    Write-Host "[ERROR] MSI install failed with exit code $($install.ExitCode)" -ForegroundColor Red
-    exit 1
-}
+    # Install Splunk Universal Forwarder
+    Write-Host "Installing Splunk Universal Forwarder..."
+    # The $INDEXER_IP variable will be pulled from the parameters
+    $msiArgs = "/i `"$SPLUNK_MSI_PATH`" AGREETOLICENSE=Yes SPLUNKPASSWORD=$SplunkPassword RECEIVING_INDEXER=${INDEXER_IP}:${RECEIVER_PORT} /quiet"
+    $install = Start-Process -FilePath "msiexec.exe" -ArgumentList $msiArgs -Wait -PassThru
+    if ($install.ExitCode -ne 0) {
+        Write-Host "[ERROR] MSI install failed with exit code $($install.ExitCode)" -ForegroundColor Red
+        exit 1
+    }
 
-# Verify install directory exists
-if (-not (Test-Path "$INSTALL_DIR\bin\splunk.exe")) {
-    Write-Host "[ERROR] Splunk UF not found at $INSTALL_DIR after install" -ForegroundColor Red
-    exit 1
-}
+    # Verify install directory exists
+    if (-not (Test-Path "$INSTALL_DIR\bin\splunk.exe")) {
+        Write-Host "[ERROR] Splunk UF not found at $INSTALL_DIR after install" -ForegroundColor Red
+        exit 1
+    }
 
-Write-Host "[OK] Splunk Universal Forwarder installed" -ForegroundColor Green
+    Write-Host "[OK] Splunk Universal Forwarder installed" -ForegroundColor Green
+
+    # Clean up downloaded MSI
+    Remove-Item $SPLUNK_MSI_PATH -ErrorAction SilentlyContinue
+}
 
 # Configure inputs.conf for monitoring
 $inputsConfPath = "$INSTALL_DIR\etc\system\local\inputs.conf"
@@ -194,8 +202,5 @@ if ($svc -and $svc.Status -eq "Running") {
 } else {
     Write-Host "[WARN] SplunkForwarder service is not running - check Event Viewer" -ForegroundColor Yellow
 }
-
-# Clean up downloaded MSI
-Remove-Item $SPLUNK_MSI_PATH -ErrorAction SilentlyContinue
 
 Write-Host "Splunk Universal Forwarder installation and configuration complete!"
