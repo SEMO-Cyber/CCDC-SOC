@@ -127,6 +127,7 @@ sourcetype = WinEventLog:Defender
 disabled = 0
 index = windows
 sourcetype = WinEventLog:Sysmon
+renderXml = true
 
 # -----------------------------------------------------------------------------
 # Additional Lateral Movement (WinRM, WMI, SMB, AtExec)

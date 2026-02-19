@@ -157,7 +157,25 @@ try {
     Write-Host "[WARN] No Sysmon events found yet (may take a moment): $_" -ForegroundColor Yellow
 }
 
-# -- 8. Summary ----------------------------------------------------------------
+# -- 8. Restart Splunk UF (if installed) ----------------------------------------
+# The Splunk UF must be restarted after Sysmon is installed so it picks up the
+# new Microsoft-Windows-Sysmon/Operational event log channel.
+$splunkSvc = Get-Service -Name "SplunkForwarder" -ErrorAction SilentlyContinue
+if ($splunkSvc) {
+    Write-Host "Restarting Splunk Universal Forwarder to pick up Sysmon event log ..."
+    Restart-Service SplunkForwarder -Force
+    Start-Sleep -Seconds 3
+    $splunkSvc = Get-Service -Name "SplunkForwarder" -ErrorAction SilentlyContinue
+    if ($splunkSvc.Status -eq "Running") {
+        Write-Host "[OK] SplunkForwarder restarted - Sysmon events will begin forwarding." -ForegroundColor Green
+    } else {
+        Write-Host "[WARN] SplunkForwarder is not running after restart." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "[INFO] Splunk Universal Forwarder not installed - skip UF restart." -ForegroundColor Yellow
+}
+
+# -- 9. Summary ----------------------------------------------------------------
 Write-Host ""
 Write-Host "=== Sysmon Installation Summary ===" -ForegroundColor Cyan
 Write-Host "  Binary:  $SysmonExe"
