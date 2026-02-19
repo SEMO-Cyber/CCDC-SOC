@@ -2,7 +2,7 @@
   <label>Honeypot Intelligence (Cowrie)</label>
   <description>Comprehensive honeypot analysis - sessions, credentials, commands, downloads</description>
 
-  <fieldset submitButton="false" autoRun="true">
+  <fieldset submitButton="true" autoRun="true">
     <input type="time" token="time_token">
       <label>Time Range</label>
       <default>
@@ -30,7 +30,7 @@
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$
-| spath eventid
+
 | where eventid=="cowrie.session.connect"
 | stats count
           </query>
@@ -53,7 +53,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$
-| spath src_ip
+
 | stats dc(src_ip) as count
           </query>
           <earliest>$time_token.earliest$</earliest>
@@ -75,7 +75,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$ eventid IN ("cowrie.login.failed", "cowrie.login.success")
-| spath
+
 | eval combo=username . "/" . password
 | stats dc(combo) as count
           </query>
@@ -98,7 +98,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$ eventid IN ("cowrie.login.fail
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$
-| spath eventid
+
 | where eventid=="cowrie.command.input"
 | stats count
           </query>
@@ -121,7 +121,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$
-| spath eventid
+
 | where eventid=="cowrie.session.file_download"
 | stats count
           </query>
@@ -150,8 +150,8 @@ index=linux sourcetype=cowrie src_ip=$src_filter$
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$
-| spath eventid
-| spath src_ip
+
+
 | where eventid=="cowrie.session.connect"
 | timechart span=5m count by src_ip limit=10
           </query>
@@ -175,7 +175,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$
-| spath eventid
+
 | eval phase=case(
     eventid=="cowrie.session.connect", "1 - Connect",
     eventid=="cowrie.login.failed" OR eventid=="cowrie.login.success", "2 - Login Attempt",
@@ -186,7 +186,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$
 | stats count by phase
 | append [
     search index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.login.success"
-    | spath
+    
     | stats count
     | eval phase="2a - Login Success"
 ]
@@ -220,7 +220,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$
-| spath
+
 | eval combo=if(eventid IN ("cowrie.login.failed","cowrie.login.success"), username . "/" . password, null())
 | eval is_cmd=if(eventid=="cowrie.command.input", 1, 0)
 | eval is_download=if(eventid=="cowrie.session.file_download", 1, 0)
@@ -258,7 +258,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$ eventid IN ("cowrie.login.failed", "cowrie.login.success")
-| spath
+
 | dedup username, password
 | timechart span=15m count as "New Credentials"
           </query>
@@ -287,7 +287,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$ eventid IN ("cowrie.login.fail
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$ eventid IN ("cowrie.login.failed", "cowrie.login.success")
-| spath
+
 | stats count as total, count(eval(eventid=="cowrie.login.success")) as success_count, count(eval(eventid=="cowrie.login.failed")) as fail_count, dc(src_ip) as sources by username, password
 | eval status=if(success_count&gt;0, "BREACHED", "Failed")
 | sort -total
@@ -316,8 +316,8 @@ index=linux sourcetype=cowrie src_ip=$src_filter$ eventid IN ("cowrie.login.fail
       <table>
         <search>
           <query>
-index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.login.failed"
-| spath
+index=linux sourcetype=cowrie src_ip=$src_filter$ eventid IN ("cowrie.login.failed", "cowrie.login.success")
+| where isnotnull(password)
 | stats dc(username) as targets by password
 | where targets &gt; 3
 | sort -targets
@@ -325,8 +325,8 @@ index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.login.failed"
 | rename password as "Value", targets as "Count"
 | head 10
 | append [
-    search index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.login.failed"
-    | spath
+    search index=linux sourcetype=cowrie src_ip=$src_filter$ eventid IN ("cowrie.login.failed", "cowrie.login.success")
+    | where isnotnull(password)
     | stats dc(password) as attempts by username
     | where attempts &gt; 3
     | sort -attempts
@@ -366,7 +366,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.login.failed"
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.command.input"
-| spath input
+
 | stats count by input
 | sort -count
 | rename input as "Command", count as "Count"
@@ -392,7 +392,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.command.input"
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.command.input"
-| spath input
+
 | eval category=case(
     match(input, "^(whoami|id|uname|hostname|ifconfig|ip a|cat /etc/passwd|cat /etc/shadow|ps |netstat|ss |w$|who$|last |df |mount|lsb_release|cat /proc)"), "Recon",
     match(input, "^(crontab|useradd|adduser|usermod|chmod|chown|echo.*&gt;&gt;|sed.*-i|systemctl enable|chkconfig)"), "Persistence",
@@ -428,7 +428,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.command.input"
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$ session=$session_token$
-| spath
+
 | eval action_type=case(
     eventid=="cowrie.session.connect", "CONNECT",
     eventid=="cowrie.login.success", "LOGIN OK",
@@ -479,10 +479,10 @@ index=linux sourcetype=cowrie src_ip=$src_filter$ session=$session_token$
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.session.file_download"
-| spath
+| eval url=coalesce(url, destfile, "N/A")
 | table _time, src_ip, url, outfile, shasum
 | sort -_time
-| rename src_ip as "Source IP", url as "URL", outfile as "Local File", shasum as "SHA256"
+| rename src_ip as "Source IP", url as "URL/Dest", outfile as "Local File", shasum as "SHA256"
 | head 30
           </query>
           <earliest>$time_token.earliest$</earliest>
@@ -501,10 +501,10 @@ index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.session.file_d
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.session.file_download"
-| spath
+| eval url=coalesce(url, destfile, "N/A")
 | stats count, values(shasum) as hashes, dc(src_ip) as sources by url
 | sort -count
-| rename url as "URL", count as "Downloads", hashes as "SHA256 Hashes", sources as "Source IPs"
+| rename url as "URL/Dest", count as "Downloads", hashes as "SHA256 Hashes", sources as "Source IPs"
 | head 15
           </query>
           <earliest>$time_token.earliest$</earliest>
@@ -536,7 +536,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$ eventid="cowrie.session.file_d
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$
-| spath src_ip
+
 | iplocation src_ip
 | geostats count by src_ip
           </query>
@@ -565,7 +565,7 @@ index=linux sourcetype=cowrie src_ip=$src_filter$
         <search>
           <query>
 index=linux sourcetype=cowrie src_ip=$src_filter$
-| spath src_ip
+
 | iplocation src_ip
 | stats count, dc(src_ip) as unique_ips, values(src_ip) as ips by Country, Region, City
 | sort -count

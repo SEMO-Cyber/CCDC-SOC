@@ -2,7 +2,7 @@
   <label>Competition Command Center</label>
   <description>War room big-screen dashboard - Real-time threat overview across all data sources</description>
 
-  <fieldset submitButton="false" autoRun="true">
+  <fieldset submitButton="true" autoRun="true">
     <input type="time" token="time_token">
       <label>Time Range</label>
       <default>

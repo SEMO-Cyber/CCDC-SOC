@@ -2,7 +2,7 @@
   <label>Windows Security</label>
   <description>Windows event monitoring - authentication, process execution, services, PowerShell, Active Directory</description>
 
-  <fieldset submitButton="false" autoRun="true">
+  <fieldset submitButton="true" autoRun="true">
     <input type="time" token="time_token">
       <label>Time Range</label>
       <default>
@@ -961,8 +961,11 @@ index=windows sourcetype="WinEventLog:WMI" host=$host_filter$
         <search>
           <query>
 index=windows sourcetype="ms:dns:debug" host=$host_filter$
-| rex field=_raw "(?i)(?:PACKET|Rcv|Snd)\s+\S+\s+\S+\s+\S+\s+(?&lt;query_type&gt;\w+)\s+(?&lt;query_name&gt;\S+)"
+| rex field=_raw "\]\s+(?&lt;query_type&gt;\w+)\s+(?&lt;query_name&gt;\(\d+\)\S+)"
 | where isnotnull(query_name)
+| eval query_name=replace(query_name, "\(\d+\)", ".")
+| eval query_name=replace(query_name, "^\.", "")
+| eval query_name=replace(query_name, "\.$", "")
 | stats count, dc(query_type) as types by query_name
 | sort -count
 | rename query_name as "Domain", count as "Queries", types as "Record Types"
@@ -991,8 +994,12 @@ index=windows sourcetype="ms:dns:debug" host=$host_filter$
         <search>
           <query>
 index=windows sourcetype="ms:dns:debug" host=$host_filter$
-| rex field=_raw "(?i)(?:PACKET|Rcv|Snd)\s+(?&lt;dns_client_ip&gt;\d+\.\d+\.\d+\.\d+)\s+\S+\s+(?&lt;dns_op&gt;\w+)\s+(?&lt;query_type&gt;\w+)\s+(?&lt;query_name&gt;\S+)"
+| rex field=_raw "(?:Rcv|Snd)\s+(?&lt;dns_client_ip&gt;\d+\.\d+\.\d+\.\d+)"
+| rex field=_raw "\]\s+(?&lt;query_type&gt;\w+)\s+(?&lt;query_name&gt;\(\d+\)\S+)"
 | where isnotnull(query_type)
+| eval query_name=replace(query_name, "\(\d+\)", ".")
+| eval query_name=replace(query_name, "^\.", "")
+| eval query_name=replace(query_name, "\.$", "")
 | eval suspicious=case(
     query_type IN ("AXFR", "IXFR"), "ZONE TRANSFER",
     query_type=="ANY", "ANY Query (Recon/Amplification)",
@@ -1023,8 +1030,12 @@ index=windows sourcetype="ms:dns:debug" host=$host_filter$
         <search>
           <query>
 index=windows sourcetype="ms:dns:debug" host=$host_filter$
-| rex field=_raw "(?i)(?:PACKET|Rcv|Snd)\s+(?&lt;dns_client_ip&gt;\d+\.\d+\.\d+\.\d+)\s+\S+\s+(?&lt;dns_op&gt;\w+)\s+(?&lt;query_type&gt;\w+)\s+(?&lt;query_name&gt;\S+)"
+| rex field=_raw "(?:Rcv|Snd)\s+(?&lt;dns_client_ip&gt;\d+\.\d+\.\d+\.\d+)"
+| rex field=_raw "\]\s+(?&lt;query_type&gt;\w+)\s+(?&lt;query_name&gt;\(\d+\)\S+)"
 | where isnotnull(dns_client_ip)
+| eval query_name=replace(query_name, "\(\d+\)", ".")
+| eval query_name=replace(query_name, "^\.", "")
+| eval query_name=replace(query_name, "\.$", "")
 | stats count, dc(query_name) as unique_queries, values(query_type) as types by dns_client_ip
 | sort -count
 | rename dns_client_ip as "Client IP", count as "Queries", unique_queries as "Unique Domains", types as "Query Types"

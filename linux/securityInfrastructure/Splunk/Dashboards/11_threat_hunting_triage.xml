@@ -2,7 +2,7 @@
   <label>Threat Hunting &amp; Triage</label>
   <description>Active investigation workbench - hunt by IP, domain, username, process, or hostname</description>
 
-  <fieldset submitButton="false" autoRun="true">
+  <fieldset submitButton="true" autoRun="true">
     <input type="time" token="time_token">
       <label>Time Range</label>
       <default>
@@ -367,10 +367,25 @@ index=network sourcetype=zeek:conn (id.orig_h=$hunt_ip$ OR id.resp_h=$hunt_ip$)
         <search>
           <query>
 index=network sourcetype=zeek:dns query="*$hunt_domain$*"
-| stats count as queries, min(_time) as first_seen, max(_time) as last_seen, dc(id.orig_h) as unique_clients, values(rcode_name) as rcodes, values(answers) as resolved_ips by query
+| eval dns_query=query, source="Zeek"
+| append [
+    search index=windows sourcetype="ms:dns:debug"
+    | rex field=_raw "\]\s+(?&lt;query_type&gt;\w+)\s+(?&lt;dns_query&gt;\(\d+\)\S+)"
+    | where isnotnull(dns_query)
+    | eval dns_query=replace(dns_query, "\(\d+\)", ".")
+    | eval dns_query=replace(dns_query, "^\.", "")
+    | eval dns_query=replace(dns_query, "\.$", "")
+    | search dns_query="*$hunt_domain$*"
+    | rex field=_raw "(?:Rcv|Snd)\s+(?&lt;dns_client_ip&gt;\d+\.\d+\.\d+\.\d+)"
+    | eval rcode_name=case(match(_raw, "NOERROR"), "NOERROR", match(_raw, "NXDOMAIN"), "NXDOMAIN", match(_raw, "SERVFAIL"), "SERVFAIL", match(_raw, "REFUSED"), "REFUSED", 1=1, "OTHER")
+    | rename dns_client_ip as id.orig_h
+    | eval source="Windows DNS", answers="N/A"
+]
+| eval query=coalesce(query, dns_query)
+| stats count as queries, min(_time) as first_seen, max(_time) as last_seen, dc(id.orig_h) as unique_clients, values(rcode_name) as rcodes, values(answers) as resolved_ips, values(source) as sources by query
 | eval first_seen=strftime(first_seen, "%m/%d %H:%M:%S"), last_seen=strftime(last_seen, "%m/%d %H:%M:%S")
 | sort -queries
-| rename query as "Query", queries as "Count", first_seen as "First Seen", last_seen as "Last Seen", unique_clients as "Clients", rcodes as "Response Codes", resolved_ips as "Resolved IPs"
+| rename query as "Query", queries as "Count", first_seen as "First Seen", last_seen as "Last Seen", unique_clients as "Clients", rcodes as "Response Codes", resolved_ips as "Resolved IPs", sources as "Source"
 | head 50
           </query>
           <earliest>$time_token.earliest$</earliest>
@@ -452,10 +467,24 @@ index=network sourcetype=zeek:ssl server_name="*$hunt_domain$*"
         <search>
           <query>
 index=network sourcetype=zeek:dns query="*$hunt_domain$*"
-| stats values(answers) as resolved_ips, count as queries, dc(id.orig_h) as querying_hosts, min(_time) as first_seen, max(_time) as last_seen by query
+| eval dns_query=query, source="Zeek"
+| append [
+    search index=windows sourcetype="ms:dns:debug"
+    | rex field=_raw "\]\s+(?&lt;query_type&gt;\w+)\s+(?&lt;dns_query&gt;\(\d+\)\S+)"
+    | where isnotnull(dns_query)
+    | eval dns_query=replace(dns_query, "\(\d+\)", ".")
+    | eval dns_query=replace(dns_query, "^\.", "")
+    | eval dns_query=replace(dns_query, "\.$", "")
+    | search dns_query="*$hunt_domain$*"
+    | rex field=_raw "(?:Rcv|Snd)\s+(?&lt;dns_client_ip&gt;\d+\.\d+\.\d+\.\d+)"
+    | rename dns_client_ip as id.orig_h
+    | eval source="Windows DNS", answers="N/A"
+]
+| eval query=coalesce(query, dns_query)
+| stats values(answers) as resolved_ips, count as queries, dc(id.orig_h) as querying_hosts, values(source) as sources, min(_time) as first_seen, max(_time) as last_seen by query
 | eval first_seen=strftime(first_seen, "%m/%d %H:%M:%S"), last_seen=strftime(last_seen, "%m/%d %H:%M:%S")
 | sort -queries
-| rename query as "Query", resolved_ips as "Resolved IPs", queries as "Queries", querying_hosts as "Querying Hosts", first_seen as "First Seen", last_seen as "Last Seen"
+| rename query as "Query", resolved_ips as "Resolved IPs", queries as "Queries", querying_hosts as "Querying Hosts", sources as "Source", first_seen as "First Seen", last_seen as "Last Seen"
           </query>
           <earliest>$time_token.earliest$</earliest>
           <latest>$time_token.latest$</latest>

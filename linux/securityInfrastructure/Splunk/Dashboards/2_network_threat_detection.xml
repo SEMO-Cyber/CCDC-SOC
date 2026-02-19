@@ -2,7 +2,7 @@
   <label>Network Threat Detection</label>
   <description>All network-layer detections consolidated - Zeek, Suricata, DNS, firewall, data exfil</description>
 
-  <fieldset submitButton="false" autoRun="true">
+  <fieldset submitButton="true" autoRun="true">
     <input type="time" token="time_token">
       <label>Time Range</label>
       <default>
