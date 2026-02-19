@@ -795,7 +795,7 @@ index=windows sourcetype="WinEventLog:Security" EventCode=4624 TargetUserName="$
           <query>
 (index=linux host=$hunt_host$) OR
 (index=windows host=$hunt_host$) OR
-(index=services host=$hunt_host$)
+(index=windows host=$hunt_host$)
 | eval category=case(
     sourcetype=="linux_secure" AND match(_raw, "Accepted|Failed|session"), "Auth",
     sourcetype=="WinEventLog:Security" AND EventCode IN ("4624","4625","4634","4648","4672"), "Auth",

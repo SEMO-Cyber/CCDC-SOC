@@ -937,8 +937,8 @@ index=windows sourcetype="WinEventLog:WMI" host=$host_filter$
       <chart>
         <search>
           <query>
-(index=services sourcetype="ms:dns:debug" host=$host_filter$) OR
-(index=services sourcetype="msdns:analytical" host=$host_filter$)
+(index=windows sourcetype="ms:dns:debug" host=$host_filter$) OR
+(index=windows sourcetype="msdns:analytical" host=$host_filter$)
 | timechart span=5m count by sourcetype
           </query>
           <earliest>$time_token.earliest$</earliest>
@@ -960,7 +960,7 @@ index=windows sourcetype="WinEventLog:WMI" host=$host_filter$
       <table>
         <search>
           <query>
-index=services sourcetype="ms:dns:debug" host=$host_filter$
+index=windows sourcetype="ms:dns:debug" host=$host_filter$
 | rex field=_raw "(?i)(?:PACKET|Rcv|Snd)\s+\S+\s+\S+\s+\S+\s+(?&lt;query_type&gt;\w+)\s+(?&lt;query_name&gt;\S+)"
 | where isnotnull(query_name)
 | stats count, dc(query_type) as types by query_name
@@ -990,7 +990,7 @@ index=services sourcetype="ms:dns:debug" host=$host_filter$
       <table>
         <search>
           <query>
-index=services sourcetype="ms:dns:debug" host=$host_filter$
+index=windows sourcetype="ms:dns:debug" host=$host_filter$
 | rex field=_raw "(?i)(?:PACKET|Rcv|Snd)\s+(?&lt;dns_client_ip&gt;\d+\.\d+\.\d+\.\d+)\s+\S+\s+(?&lt;dns_op&gt;\w+)\s+(?&lt;query_type&gt;\w+)\s+(?&lt;query_name&gt;\S+)"
 | where isnotnull(query_type)
 | eval suspicious=case(
@@ -1022,7 +1022,7 @@ index=services sourcetype="ms:dns:debug" host=$host_filter$
       <table>
         <search>
           <query>
-index=services sourcetype="ms:dns:debug" host=$host_filter$
+index=windows sourcetype="ms:dns:debug" host=$host_filter$
 | rex field=_raw "(?i)(?:PACKET|Rcv|Snd)\s+(?&lt;dns_client_ip&gt;\d+\.\d+\.\d+\.\d+)\s+\S+\s+(?&lt;dns_op&gt;\w+)\s+(?&lt;query_type&gt;\w+)\s+(?&lt;query_name&gt;\S+)"
 | where isnotnull(dns_client_ip)
 | stats count, dc(query_name) as unique_queries, values(query_type) as types by dns_client_ip
@@ -1055,7 +1055,7 @@ index=services sourcetype="ms:dns:debug" host=$host_filter$
       <chart>
         <search>
           <query>
-index=services sourcetype="ms:iis:auto" host=$host_filter$
+index=windows sourcetype="ms:iis:auto" host=$host_filter$
 | timechart span=5m count by sc_status limit=10
           </query>
           <earliest>$time_token.earliest$</earliest>
@@ -1076,7 +1076,7 @@ index=services sourcetype="ms:iis:auto" host=$host_filter$
       <chart>
         <search>
           <query>
-index=services sourcetype="ms:iis:auto" host=$host_filter$
+index=windows sourcetype="ms:iis:auto" host=$host_filter$
 | eval status_group=case(
     sc_status &gt;= 500, "5xx Server Error",
     sc_status &gt;= 400, "4xx Client Error",
@@ -1106,7 +1106,7 @@ index=services sourcetype="ms:iis:auto" host=$host_filter$
       <table>
         <search>
           <query>
-index=services sourcetype="ms:iis:auto" host=$host_filter$
+index=windows sourcetype="ms:iis:auto" host=$host_filter$
 | stats count, dc(c_ip) as unique_clients, values(cs_method) as methods, avg(time_taken) as avg_time by cs_uri_stem
 | eval avg_time=round(avg_time, 0)
 | sort -count
@@ -1132,7 +1132,7 @@ index=services sourcetype="ms:iis:auto" host=$host_filter$
       <table>
         <search>
           <query>
-index=services sourcetype="ms:iis:auto" host=$host_filter$
+index=windows sourcetype="ms:iis:auto" host=$host_filter$
 | stats count, dc(cs_uri_stem) as unique_uris, values(cs_method) as methods, values(sc_status) as statuses by c_ip
 | sort -count
 | rename c_ip as "Client IP", count as "Requests", unique_uris as "Unique URIs", methods as "Methods", statuses as "Status Codes"
@@ -1160,7 +1160,7 @@ index=services sourcetype="ms:iis:auto" host=$host_filter$
       <table>
         <search>
           <query>
-index=services sourcetype="ms:iis:auto" host=$host_filter$
+index=windows sourcetype="ms:iis:auto" host=$host_filter$
 | eval suspicious=case(
     match(cs_uri_stem, "(?i)\.(asp|aspx|php|jsp|cgi|sh|py|pl|exe|dll|bat|cmd|ps1)$") AND sc_status &gt;= 400, "Blocked Script Access",
     match(cs_uri_stem, "(?i)(\.\.\/|\.\.\\\\|%2e%2e|%252e)"), "Path Traversal",
@@ -1198,7 +1198,7 @@ index=services sourcetype="ms:iis:auto" host=$host_filter$
       <table>
         <search>
           <query>
-index=services sourcetype="ms:iis:auto" host=$host_filter$
+index=windows sourcetype="ms:iis:auto" host=$host_filter$
 | stats count, dc(c_ip) as unique_clients, dc(cs_uri_stem) as unique_uris by cs_User_Agent
 | sort +count
 | rename cs_User_Agent as "User Agent", count as "Requests", unique_clients as "Unique Clients", unique_uris as "Unique URIs"

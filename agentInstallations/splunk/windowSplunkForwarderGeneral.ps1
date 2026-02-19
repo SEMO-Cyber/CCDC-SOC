@@ -150,23 +150,23 @@ sourcetype = WinEventLog:TaskScheduler
 # This doesn't work :(
 [WinEventLog://Microsoft-Windows-DNSServer/Analytical]
 disabled = 0
-index = services
+index = windows
 renderXml = 1
 sourcetype = msdns:analytical
 
 [monitor://C:\Windows\System32\dns\dns*.log]
 disabled = 0
-index = services
+index = windows
 sourcetype = ms:dns:debug
 
 [monitor://C:\inetpub\logs\LogFiles\W3SVC*\*.log]
 disabled = 0
-index = services
+index = windows
 sourcetype = ms:iis:auto
 
 [monitor://C:\inetpub\logs\LogFiles\FTPSVC*\*.log]
 disabled = 0
-index = services
+index = windows
 sourcetype = ms:iis:auto
 "@ | Out-File -FilePath $inputsConfPath -Encoding ASCII
 
