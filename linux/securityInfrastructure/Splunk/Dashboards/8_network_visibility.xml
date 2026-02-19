@@ -53,16 +53,11 @@ index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter
         <search>
           <query>
 index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$
-| eval internal_ips=mvappend(
-    if(cidrmatch("192.168.0.0/16", id.orig_h), id.orig_h, null()),
-    if(cidrmatch("10.0.0.0/8", id.orig_h), id.orig_h, null()),
-    if(cidrmatch("172.16.0.0/12", id.orig_h), id.orig_h, null()),
-    if(cidrmatch("192.168.0.0/16", id.resp_h), id.resp_h, null()),
-    if(cidrmatch("10.0.0.0/8", id.resp_h), id.resp_h, null()),
-    if(cidrmatch("172.16.0.0/12", id.resp_h), id.resp_h, null())
-)
-| mvexpand internal_ips
-| stats dc(internal_ips) as count
+| rename "id.orig_h" as src, "id.resp_h" as dst
+| eval all_ips=mvappend(src, dst)
+| mvexpand all_ips
+| where cidrmatch("192.168.0.0/16", all_ips) OR cidrmatch("10.0.0.0/8", all_ips) OR cidrmatch("172.16.0.0/12", all_ips)
+| stats dc(all_ips) as count
           </query>
           <earliest>$time_token.earliest$</earliest>
           <latest>$time_token.latest$</latest>
@@ -81,9 +76,10 @@ index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter
         <search>
           <query>
 index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$
-| eval all_ips=mvappend(id.orig_h, id.resp_h)
+| rename "id.orig_h" as src, "id.resp_h" as dst
+| eval all_ips=mvappend(src, dst)
 | mvexpand all_ips
-| where NOT cidrmatch("192.168.0.0/16", all_ips) AND NOT cidrmatch("10.0.0.0/8", all_ips) AND NOT cidrmatch("172.16.0.0/12", all_ips)
+| where NOT cidrmatch("192.168.0.0/16", all_ips) AND NOT cidrmatch("10.0.0.0/8", all_ips) AND NOT cidrmatch("172.16.0.0/12", all_ips) AND NOT cidrmatch("127.0.0.0/8", all_ips) AND NOT cidrmatch("fe80::/10", all_ips) AND NOT cidrmatch("ff00::/8", all_ips)
 | stats dc(all_ips) as count
           </query>
           <earliest>$time_token.earliest$</earliest>
