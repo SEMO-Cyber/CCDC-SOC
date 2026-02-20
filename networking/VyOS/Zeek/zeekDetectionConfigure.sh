@@ -738,34 +738,6 @@ event x509_certificate(f: fa_file, cert_ref: opaque of x509, cert: X509::Certifi
         }
     }
 
-    # --- Certificate Validity Period Anomalies ---
-    # CA/Browser Forum limits: max 398 days for publicly trusted certs.
-    # Self-signed certs with very long validity indicate tool-generated certs:
-    #   Metasploit: 4-9 years (randomized), AsyncRAT/DcRat: ~10 years
-    # Legitimate internal CAs may also use long validity, but combined with
-    # self-signed + long validity, this is a strong indicator.
-    if ( cert?$not_valid_before && cert?$not_valid_after )
-    {
-        local validity_secs = interval_to_double(cert$not_valid_after - cert$not_valid_before);
-        local five_years_secs = 5.0 * 365.0 * 86400.0;
-
-        if ( validity_secs > five_years_secs && subject == issuer )
-        {
-            local validity_days = double_to_count(validity_secs / 86400.0);
-            for ( cid in f$conns )
-            {
-                NOTICE([
-                    $note = Suspicious_Certificate,
-                    $conn = f$conns[cid],
-                    $msg = fmt("Self-signed cert with excessive validity: %d days (~%d years, subject: %s, server: %s:%s)",
-                               validity_days, double_to_count(validity_secs / (365.0 * 86400.0)),
-                               subject, f$conns[cid]$id$resp_h, f$conns[cid]$id$resp_p),
-                    $sub = fmt("Long validity self-signed: %d days", validity_days),
-                    $identifier = cat(f$conns[cid]$id$resp_h, f$conns[cid]$id$resp_p, "longvalidity")
-                ]);
-            }
-        }
-    }
 }
 ZEEKEOF
 
@@ -954,10 +926,6 @@ export {
         # Unlike .NET RATs above, Remcos uses its own TLS implementation
         ["a85be79f7b569f1df5e6087b69deb493"] = "Remcos RAT",                 # ANY.RUN strict association
 
-        # Skuld Stealer - Go-based info stealer with unique fingerprints (ANY.RUN)
-        ["e69402f870ecf542b4f017b0ed32936a"] = "Skuld Stealer (Go)",         # ANY.RUN verified
-        ["d113e8b9d55b97b77077806180483c96"] = "Skuld Stealer (Go variant)", # ANY.RUN verified
-
         # =====================================================================
         # C2 FRAMEWORKS - DFIR Report + Salesforce JA3/JA3S blog
         # NOTE: 72a589da... and a0e9f5d6... are WINDOWS TLS SOCKET fingerprints.
@@ -966,10 +934,9 @@ export {
         # =====================================================================
         ["72a589da586844d7f0818ce684948eea"] = "Win10 SChannel to IP (CobaltStrike/Meterpreter/Havoc/Covenant/Remcos/Warzone)",
         # DISABLED - Too broad, matches all Windows system TLS traffic (SChannel default)
-        # ["a0e9f5d64349fb13191bc781f81f42e1"] = "Win10 SChannel to domain (CobaltStrike/Meterpreter/IcedID/LummaC2/Stealc/AgentTesla)",
+        # ["a0e9f5d64349fb13191bc781f81f42e1"] = "Win10 SChannel to domain (CobaltStrike/Meterpreter/LummaC2/Stealc/AgentTesla)",
         ["5d65ea3fb1d4aa7d826733f355cd4c51"] = "Metasploit Meterpreter",
         ["5d65ea3fb1d4aa7d826733d2f2cbbb1d"] = "Metasploit Meterpreter HTTPS (Linux)", # Verified via live testing
-        ["3b5074b1b5d032e5620f69f9f700ff0e"] = "IcedID",                     # NETRESEC blog
         ["0c9457ab6f0d6a14fc8a3d1d149547fb"] = "BumbleBee C2",               # Darktrace research
         ["eb88d0b3e1961a0562f006e5ce2a0b87"] = "Cobalt Strike Malleable C2", # Suricata ET rules
         ["f5e62b5a2ed9467df09fae7a8a54dda6"] = "BazarBackdoor/BazarLoader",  # TrickBot backdoor, Suricata ET rules
@@ -1070,7 +1037,6 @@ export {
         ["ae4edc6faf64d08308082ad26be60767"] = "Cobalt Strike C2 Server",    # DFIR Report
         ["b742b407517bac9536a77a7b0fee28e9"] = "Cobalt Strike C2 Server",    # DFIR Report
         ["649d6810e8392f63dc311eecb6b7098b"] = "Cobalt Strike C2 Server",    # DFIR Report
-        ["ec74a5c51106f0419184d0dd08fb05bc"] = "IcedID C2 Server",           # NETRESEC
         ["80b3a14bccc8598a1f3bbe83e71f735f"] = "Emotet C2 Server",           # Salesforce blog
         ["da2b67b20914678c1f1f5888281e1db9"] = "Metasploit Handler Server",  # Verified via live testing
         ["f4febc55ea12b31ae17cfb7e614afda8"] = "Go TLS 1.3 Server (Sliver/Mythic/Go C2)", # Verified live: Sliver v1.7.0, Go 1.25.6
@@ -1107,8 +1073,6 @@ export {
         # DISABLED - Too broad, matches any Go app using default TLS (Go < 1.22)
         # ["t13d190900_9dc949149365_97f8aa674fd9"] = "Cobalt Strike / Sliver / Go C2 (Go < 1.22)",
         # ["t13i190900_9dc949149365_97f8aa674fd9"] = "Cobalt Strike / Sliver / Go C2 (Go < 1.22, no SNI)",
-        # DISABLED - Too broad, matches common Windows/IcedID TLS patterns
-        # ["t13d201100_2b729b4bf6f3_9e7b989ebec8"] = "IcedID / Cobalt Strike Beacon",
         ["t12d190900_9dc949149365_97f8aa674fd9"] = "Cobalt Strike (TLS 1.2)",
         ["t13d191000_9dc949149365_e7c285222651"] = "Cobalt Strike 4.x malleable",
         ["t13d1517h2_8daaf6152771_b0da82dd1658"] = "Cobalt Strike 4.9+ HTTPS",
@@ -1152,10 +1116,6 @@ export {
     # any TLS 1.3 server with AES_128_GCM_SHA256). Combine with client JA4 and cert
     # anomaly detection for higher fidelity. Verified via live Sliver/Mythic testing.
     global ja4s_signatures: table[string] of string = {
-        # Go TLS 1.3 server (Sliver/Mythic) - verified live: Sliver v1.7.0
-        # NOTE: Also matches some legitimate TLS 1.3 servers. Combine with client JA4 for high fidelity.
-        ["t130200_1301_a56c5b993250"] = "Go TLS 1.3 Server (Sliver/Mythic C2)", # Verified live + ja4db.com
-        ["t120300_c030_5e2616a54c73"] = "IcedID C2 Server",                 # ja4db.com
         ["t120300_c030_52d195ce1d92"] = "Cobalt Strike v4.9.1 Server",      # ja4db.com
         ["t120100_003d_bc98f8e001b5"] = "Metasploit Handler Server (TLS 1.2)", # Verified via live testing
     };
@@ -1239,9 +1199,8 @@ export {
         "Raccoon", "raccoon", "RaccoonStealer",
         "DarkGate", "darkgate", "PikaBot", "pikabot",
         "SystemBC", "systembc", "Amadey", "amadey",
-        "IcedID", "icedid", "BumbleBee", "bumblebee",
+        "BumbleBee", "bumblebee",
         "Emotet", "emotet", "BazarBackdoor", "bazarloader",
-        "Skuld", "skuld",
 
         # Suspicious patterns
         "DVWS", "kali", "Kali", "parrot", "Parrot",
@@ -1846,7 +1805,7 @@ print_summary() {
     echo -e "${GREEN}Detection Coverage:${NC}"
     echo "  • 18 C2 frameworks (Cobalt Strike, Sliver, Havoc, Brute Ratel, Mythic...)"
     echo "  • 15 RATs (AsyncRAT, njRAT, QuasarRAT, Remcos, DCRat, XWorm...)"
-    echo "  • 10 Stealers/Loaders (LummaC2, RedLine, IcedID, Pikabot...)"
+    echo "  • 10 Stealers/Loaders (LummaC2, RedLine, Pikabot...)"
     echo "  • 10 Banking trojans (TrickBot, Dridex, Emotet, Qakbot...)"
     echo "  • X.509 cert analysis (CS default serial, AsyncRAT SHA512+4096, long validity)"
     echo "  • DNS tunneling (iodine NULL records, dnscat2, data exfiltration)"
