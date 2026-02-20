@@ -1,0 +1,12 @@
+.claude/
+vagrant/
+docs/
+tests/
+
+data/
+Windows/ad-lab/
+
+# Ligolo-ng runtime artifacts
+ligolo-ng.yaml
+ligolo-ng.history
+ligolo-selfcerts/

@@ -1,0 +1,1233 @@
+<form version="1.1">
+  <label>Windows Security</label>
+  <description>Windows event monitoring - authentication, process execution, services, PowerShell, Active Directory</description>
+
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_token">
+      <label>Time Range</label>
+      <default>
+        <earliest>-4h@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="dropdown" token="host_filter">
+      <label>Host</label>
+      <default>*</default>
+      <choice value="*">All Hosts</choice>
+      <search>
+        <query>index=windows | stats count by host | fields host</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <fieldForLabel>host</fieldForLabel>
+      <fieldForValue>host</fieldForValue>
+    </input>
+    <input type="text" token="eventcode_filter">
+      <label>EventCode Filter</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <!-- ============================================================ -->
+  <!-- Row 1: 6 KPI Score Cards                                     -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <single>
+        <title>Failed Logons (4625)</title>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Security" EventCode=4625 host=$host_filter$
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[10,50,200]</option>
+        <option name="underLabel">Authentication Failures</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Successful Logons (4624)</title>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Security" EventCode=4624 host=$host_filter$
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="underLabel">Successful Authentications</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>New Services (7045)</title>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:System" EventCode=7045 host=$host_filter$
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="underLabel">Services Installed</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Process Creates (Sysmon 1)</title>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Sysmon" EventCode=1 host=$host_filter$
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="underLabel">Sysmon Process Events</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>PowerShell Executions (4104)</title>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:PowerShell" EventCode=4104 host=$host_filter$
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xdc4e41"]</option>
+        <option name="rangeValues">[10,50]</option>
+        <option name="underLabel">Script Block Events</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Defender Detections</title>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Defender" EventCode IN (1116,1117) host=$host_filter$
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xdc4e41"]</option>
+        <option name="rangeValues">[0]</option>
+        <option name="underLabel">Malware Detected/Blocked</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 2: Logon Event Timeline + Logon Type Distribution        -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <html>
+        <h3 style="color:#F8BE34; margin:0; padding:5px 10px;">Authentication Overview</h3>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Logon Event Timeline</title>
+      <chart>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Security" EventCode IN (4624, 4625) host=$host_filter$
+| eval result=case(EventCode==4624, "Success", EventCode==4625, "Failure")
+| timechart span=5m count by result
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.fieldColors">{"Success":#53A051,"Failure":#DC4E41}</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Logon Type Distribution</title>
+      <chart>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Security" EventCode=4624 host=$host_filter$
+| stats count by Logon_Type
+| eval logon_label=case(
+    Logon_Type==2, "Interactive",
+    Logon_Type==3, "Network",
+    Logon_Type==4, "Batch",
+    Logon_Type==5, "Service",
+    Logon_Type==7, "Unlock",
+    Logon_Type==8, "NetworkCleartext",
+    Logon_Type==9, "NewCredentials",
+    Logon_Type==10, "RemoteInteractive(RDP)",
+    Logon_Type==11, "CachedInteractive",
+    1=1, "Type ".Logon_Type
+)
+| fields logon_label, count
+| rename logon_label as "Logon Type"
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 3: Failed Logon Details + Account Lockouts/Priv Logons   -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Failed Logon Details (4625)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Security" EventCode=4625 host=$host_filter$
+| eval Account=coalesce(TargetUserName, Account_Name)
+| eval src_ip=coalesce(Source_Network_Address, IpAddress, Caller_Machine_Name, "-")
+| eval failure_reason=case(
+    Sub_Status=="0xc000006a", "Bad Password",
+    Sub_Status=="0xc0000064", "Bad Username",
+    Sub_Status=="0xc0000072", "Disabled Account",
+    Sub_Status=="0xc000006d", "Bad Username or Password",
+    Sub_Status=="0xc0000234", "Account Locked",
+    Sub_Status=="0xc0000071", "Expired Password",
+    Sub_Status=="0xc0000070", "Workstation Restriction",
+    Sub_Status=="0xc000015b", "Logon Type Not Granted",
+    Sub_Status=="0xc0000133", "Clock Skew Too Great",
+    Sub_Status=="0xc0000224", "Password Must Change",
+    isnotnull(Sub_Status), Sub_Status,
+    1=1, "Unknown"
+)
+| table _time, host, Account, src_ip, Logon_Type, Status, Sub_Status, failure_reason
+| sort -_time
+| rename Account as "Target Account", src_ip as "Source IP", failure_reason as "Failure Reason"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Failure Reason">
+          <colorPalette type="map">{"Bad Password":#F1813F,"Bad Username":#F8BE34,"Disabled Account":#DC4E41,"Bad Username or Password":#F1813F,"Account Locked":#DC4E41,"Expired Password":#F8BE34,"Unknown":#708794}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Account Lockouts (4740) &amp; Privileged Logons (4672)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Security" EventCode=4740 host=$host_filter$
+| eval event_type="LOCKOUT"
+| eval Account=coalesce(TargetUserName, Account_Name)
+| eval detail=coalesce(Caller_Computer_Name, Source_Network_Address, "-")
+| table _time, host, event_type, Account, detail
+| append [
+    search index=windows sourcetype="WinEventLog:Security" EventCode=4672 host=$host_filter$
+    | eval Account=coalesce(TargetUserName, SubjectUserName, Account_Name)
+    | stats count as logon_count by Account
+    | eval event_type="PRIV_LOGON"
+    | eval detail=logon_count." privileged logons"
+    | eval _time=now()
+    | table _time, event_type, Account, detail
+    | sort -logon_count
+    | head 10
+]
+| sort -_time
+| rename event_type as "Type", Account as "Account", detail as "Details"
+| head 25
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Type">
+          <colorPalette type="map">{"LOCKOUT":#DC4E41,"PRIV_LOGON":#F8BE34}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 4: LOLBin Execution + Suspicious Parent-Child            -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <html>
+        <h3 style="color:#F8BE34; margin:0; padding:5px 10px;">Process Execution Analysis</h3>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>LOLBin Execution Tracker</title>
+      <table>
+        <search>
+          <query>
+index=windows host=$host_filter$
+    ((sourcetype="WinEventLog:Sysmon" EventCode=1) OR (sourcetype="WinEventLog:Security" EventCode=4688))
+| eval proc_image=coalesce(Image, NewProcessName, New_Process_Name, Process_Name)
+| eval cmdline=coalesce(CommandLine, Process_Command_Line)
+| eval parent=coalesce(ParentImage, ParentProcessName, Creator_Process_Name)
+| eval proc_user=coalesce(User, SubjectUserName, Account_Name)
+| where match(proc_image, "(?i)\\\\(powershell|cmd|wscript|cscript|mshta|regsvr32|rundll32|certutil|bitsadmin|msiexec|wmic|net|net1|nltest|dsquery|ntdsutil|vssadmin|csvde|ldifde|klist|whoami|systeminfo|ipconfig|tasklist|schtasks|reg|sc|attrib)\.exe$")
+| eval proc_name=replace(proc_image, ".*\\\\", "")
+| table _time, host, proc_user, proc_name, cmdline, parent
+| sort -_time
+| rename proc_user as "User", proc_name as "Process", cmdline as "Command Line", parent as "Parent Process"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Process">
+          <colorPalette type="map">{"powershell.exe":#DC4E41,"cmd.exe":#F1813F,"certutil.exe":#DC4E41,"bitsadmin.exe":#DC4E41,"mshta.exe":#DC4E41,"regsvr32.exe":#DC4E41,"rundll32.exe":#F1813F,"wscript.exe":#DC4E41,"cscript.exe":#DC4E41,"wmic.exe":#F1813F,"net.exe":#F8BE34,"net1.exe":#F8BE34,"nltest.exe":#F1813F,"dsquery.exe":#F1813F,"ntdsutil.exe":#DC4E41,"vssadmin.exe":#DC4E41,"whoami.exe":#F8BE34,"schtasks.exe":#F1813F,"sc.exe":#F1813F,"reg.exe":#F8BE34}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Suspicious Parent-Child Relationships</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Sysmon" EventCode=1 host=$host_filter$
+| where match(ParentImage, "(?i)\\\\(winword|excel|outlook|powerpnt|svchost|services|wmiprvse|explorer)\.exe$")
+    AND match(Image, "(?i)\\\\(cmd|powershell|wscript|cscript|mshta|certutil|regsvr32|rundll32|bitsadmin)\.exe$")
+| eval parent_proc=replace(ParentImage, ".*\\\\", "")
+| eval child_proc=replace(Image, ".*\\\\", "")
+| stats count by parent_proc, child_proc, User, host
+| sort -count
+| rename parent_proc as "Parent Process", child_proc as "Child Process", count as "Count"
+| head 25
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Count">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F1813F" minColor="#F1813F"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+        <format type="color" field="Parent Process">
+          <colorPalette type="map">{"winword.exe":#DC4E41,"excel.exe":#DC4E41,"outlook.exe":#DC4E41,"powerpnt.exe":#DC4E41,"svchost.exe":#F1813F,"services.exe":#F1813F,"wmiprvse.exe":#F1813F,"explorer.exe":#F8BE34}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 5: Suspicious Command Lines + Process Creation Timeline  -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Suspicious Command Lines</title>
+      <table>
+        <search>
+          <query>
+index=windows host=$host_filter$
+    ((sourcetype="WinEventLog:Sysmon" EventCode=1) OR (sourcetype="WinEventLog:Security" EventCode=4688))
+| eval cmdline=coalesce(CommandLine, Process_Command_Line)
+| eval proc_image=coalesce(Image, NewProcessName, New_Process_Name)
+| eval proc_user=coalesce(User, SubjectUserName, Account_Name)
+| eval category=case(
+    match(cmdline, "(?i)(-enc|-e |-EncodedCommand|FromBase64String)"), "Encoded PowerShell",
+    match(cmdline, "(?i)(IEX|Invoke-Expression|Net\.WebClient|DownloadString|DownloadFile|Invoke-WebRequest|wget|curl|certutil.*-urlcache|bitsadmin.*\/transfer)"), "Download Cradle",
+    match(cmdline, "(?i)(mimikatz|sekurlsa|lsadump|kerberoast|hashdump|ntds\.dit|sam\.hive|vssadmin.*shadow)"), "Credential Access",
+    match(cmdline, "(?i)(nltest.*\/dclist|net group.*domain|dsquery|Get-AD|Get-Domain|BloodHound|SharpHound|Invoke-Recon)"), "Discovery/Recon",
+    1=1, null()
+)
+| where isnotnull(category)
+| table _time, host, category, proc_user, proc_image, cmdline
+| sort -_time
+| rename category as "Category", proc_user as "User", proc_image as "Image", cmdline as "Command Line"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Category">
+          <colorPalette type="map">{"Encoded PowerShell":#DC4E41,"Download Cradle":#DC4E41,"Credential Access":#DC4E41,"Discovery/Recon":#F1813F}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Process Creation Timeline by Host</title>
+      <chart>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Sysmon" EventCode=1 host=$host_filter$
+| timechart span=5m count by host limit=10
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 6: Services & Persistence                                -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <html>
+        <h3 style="color:#F8BE34; margin:0; padding:5px 10px;">Services &amp; Persistence</h3>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>New Services Installed (7045)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:System" EventCode=7045 host=$host_filter$
+| eval svc_name=coalesce(ServiceName, Service_Name, param1)
+| eval svc_path=coalesce(ImagePath, Service_File_Name, param2)
+| eval svc_type=coalesce(ServiceType, Service_Type, param3)
+| eval svc_start=coalesce(StartType, Service_Start_Type, param4)
+| eval svc_acct=coalesce(AccountName, Service_Account, param5)
+| eval suspicious=case(
+    match(svc_path, "(?i)(cmd|powershell|PSEXESVC|mshta|regsvr32|rundll32|certutil|bitsadmin|%COMSPEC%)"), "HIGH",
+    match(svc_name, "^[a-zA-Z]{8}$"), "MED (Random Name)",
+    match(svc_path, "(?i)(\\\\temp\\\\|\\\\tmp\\\\|%temp%|appdata)"), "MED (Temp Path)",
+    1=1, "LOW"
+)
+| table _time, host, svc_name, svc_path, svc_type, svc_start, svc_acct, suspicious
+| sort -_time
+| rename svc_name as "Service Name", svc_path as "Image Path", svc_type as "Type", svc_start as "Start Type", svc_acct as "Account", suspicious as "Risk"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Risk">
+          <colorPalette type="map">{"HIGH":#DC4E41,"MED (Random Name)":#F1813F,"MED (Temp Path)":#F1813F,"LOW":#53A051}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Scheduled Tasks (4698 Created / 4699 Deleted)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Security" EventCode IN (4698, 4699) host=$host_filter$
+| eval action=case(EventCode==4698, "Created", EventCode==4699, "Deleted")
+| eval task_name=coalesce(TaskName, Task_Name)
+| rex field=_raw "&lt;Command&gt;(?&lt;task_command&gt;[^&lt;]+)&lt;/Command&gt;"
+| rex field=_raw "&lt;Arguments&gt;(?&lt;task_args&gt;[^&lt;]+)&lt;/Arguments&gt;"
+| eval full_command=if(isnotnull(task_args), task_command." ".task_args, task_command)
+| eval task_user=coalesce(SubjectUserName, Account_Name)
+| table _time, host, action, task_name, full_command, task_user
+| sort -_time
+| rename action as "Action", task_name as "Task Name", full_command as "Command", task_user as "Created By"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Action">
+          <colorPalette type="map">{"Created":#F1813F,"Deleted":#53A051}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 7: PowerShell Deep Dive                                  -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <html>
+        <h3 style="color:#F8BE34; margin:0; padding:5px 10px;">PowerShell Deep Dive</h3>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>PowerShell Script Block Log (4104)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:PowerShell" EventCode=4104 host=$host_filter$
+| eval ps_user=coalesce(UserID, User, Account_Name)
+| eval snippet=substr(ScriptBlockText, 1, 500)
+| eval risk=case(
+    match(ScriptBlockText, "(?i)(Invoke-Mimikatz|Invoke-Kerberoast|Get-GPPPassword|Invoke-BloodHound|Add-MpPreference|Set-MpPreference.*Disable|Invoke-Command|New-PSSession|Enter-PSSession|Invoke-WMIMethod|AMSI|AmsiUtils|Reflection\.Assembly|VirtualProtect|kernel32|ntdll)"), "HIGH",
+    match(ScriptBlockText, "(?i)(-enc |-e |FromBase64|ToBase64|Compress|Decompress|IEX|Invoke-Expression|Net\.WebClient|DownloadString)"), "MEDIUM",
+    1=1, "LOW"
+)
+| table _time, host, ps_user, risk, snippet
+| sort -_time
+| rename ps_user as "User", risk as "Risk", snippet as "Script Block (first 500 chars)"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Risk">
+          <colorPalette type="map">{"HIGH":#DC4E41,"MEDIUM":#F1813F,"LOW":#53A051}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>PowerShell Execution Frequency</title>
+      <chart>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:PowerShell" EventCode=4104 host=$host_filter$
+| timechart span=5m count by host limit=10
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 8: Active Directory Security                             -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <html>
+        <h3 style="color:#F8BE34; margin:0; padding:5px 10px;">Active Directory Security</h3>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>AD Account &amp; Group Changes</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Security" EventCode IN (4720, 4722, 4724, 4725, 4726, 4738, 4728, 4729, 4732, 4733, 4756, 4757) host=$host_filter$
+| eval action=case(
+    EventCode==4720, "User Created",
+    EventCode==4722, "User Enabled",
+    EventCode==4724, "Password Reset",
+    EventCode==4725, "User Disabled",
+    EventCode==4726, "User Deleted",
+    EventCode==4738, "User Changed",
+    EventCode==4728, "Added to Global Group",
+    EventCode==4729, "Removed from Global Group",
+    EventCode==4732, "Added to Local Group",
+    EventCode==4733, "Removed from Local Group",
+    EventCode==4756, "Added to Universal Group",
+    EventCode==4757, "Removed from Universal Group"
+)
+| eval target_account=coalesce(TargetUserName, Account_Name)
+| eval performed_by=coalesce(SubjectUserName, Subject_Account_Name, Caller_User_Name)
+| eval group=coalesce(Group_Name, TargetUserName)
+| table _time, host, action, target_account, performed_by, group
+| sort -_time
+| rename action as "Action", target_account as "Target Account", performed_by as "Performed By", group as "Group"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Action">
+          <colorPalette type="map">{"User Created":#F1813F,"User Enabled":#F1813F,"Added to Global Group":#F1813F,"Added to Local Group":#F1813F,"Added to Universal Group":#F1813F,"User Deleted":#53A051,"User Disabled":#53A051,"Removed from Global Group":#53A051,"Removed from Local Group":#53A051,"Removed from Universal Group":#53A051,"User Changed":#F8BE34,"Password Reset":#F8BE34}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Kerberoasting &amp; DCSync Detection</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Security" EventCode=4769 Ticket_Encryption_Type="0x17" host=$host_filter$
+| eval attack_type="KERBEROASTING"
+| eval target=coalesce(TargetUserName, ServiceName, Service_Name)
+| eval src=coalesce(Source_Network_Address, IpAddress, Client_Address)
+| table _time, host, attack_type, target, src, Ticket_Encryption_Type
+| append [
+    search index=windows sourcetype="WinEventLog:Security" EventCode=4662 host=$host_filter$
+    | where match(Properties, "1131f6ad") OR match(Properties, "1131f6aa") OR match(Properties, "89e95b76")
+    | eval attack_type="DCSYNC"
+    | eval target=coalesce(SubjectUserName, Account_Name)
+    | eval src=coalesce(SubjectDomainName, "-")
+    | table _time, host, attack_type, target, src
+]
+| sort -_time
+| rename attack_type as "Attack Type", target as "Target/Service", src as "Source"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Attack Type">
+          <colorPalette type="map">{"KERBEROASTING":#DC4E41,"DCSYNC":#DC4E41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 9: Defender & AV                                         -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <html>
+        <h3 style="color:#F8BE34; margin:0; padding:5px 10px;">Windows Defender</h3>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>Defender Detections (1116/1117)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Defender" EventCode IN (1116, 1117) host=$host_filter$
+| eval threat=coalesce('Threat Name', Threat_Name, threat_name)
+| eval det_path=coalesce('Path', detection_path, Resources)
+| eval det_action=coalesce('Action Name', Action, action)
+| eval severity=coalesce('Severity Name', Severity_Name, Severity_ID)
+| eval det_user=coalesce('Detection User', User, user)
+| eval det_action_desc=case(
+    EventCode==1116, "Detected",
+    EventCode==1117, "Action Taken",
+    1=1, "Unknown"
+)
+| table _time, host, threat, det_path, det_action_desc, det_action, severity, det_user
+| sort -_time
+| rename threat as "Threat", det_path as "Path", det_action_desc as "Event", det_action as "Action Taken", severity as "Severity", det_user as "User"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Severity">
+          <colorPalette type="map">{"Severe":#DC4E41,"High":#DC4E41,"Medium":#F1813F,"Low":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Event">
+          <colorPalette type="map">{"Detected":#F1813F,"Action Taken":#DC4E41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Defender Status Changes (SUSPICIOUS)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Defender" EventCode IN (5001, 5004, 5007, 5010, 5012) host=$host_filter$
+| eval status_desc=case(
+    EventCode==5001, "Real-Time Protection DISABLED",
+    EventCode==5004, "Real-Time Protection Config Changed",
+    EventCode==5007, "Antimalware Platform Config Changed",
+    EventCode==5010, "Malware Scanning DISABLED",
+    EventCode==5012, "Virus Definitions DELETED"
+)
+| eval severity="CRITICAL"
+| table _time, host, status_desc, severity
+| sort -_time
+| rename status_desc as "Status Change", severity as "Severity"
+| head 15
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Severity">
+          <colorPalette type="map">{"CRITICAL":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="Status Change">
+          <colorPalette type="map">{"Real-Time Protection DISABLED":#DC4E41,"Real-Time Protection Config Changed":#DC4E41,"Antimalware Platform Config Changed":#DC4E41,"Malware Scanning DISABLED":#DC4E41,"Virus Definitions DELETED":#DC4E41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 10: WinRM & SMB Lateral Movement                         -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <html>
+        <h3 style="color:#F8BE34; margin:0; padding:5px 10px;">WinRM &amp; SMB Lateral Movement</h3>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>WinRM Remote Sessions</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:WinRM" host=$host_filter$
+| eval event_type=case(
+    EventCode==6, "Session Created",
+    EventCode==8, "Session Closed",
+    EventCode==15, "Request Received",
+    EventCode==16, "Request Complete",
+    EventCode==91, "Operation Started",
+    EventCode==142, "WSMan Error",
+    EventCode==161, "Auth Failure",
+    EventCode==169, "User Authenticated",
+    1=1, "Event " . EventCode
+)
+| eval severity=case(
+    EventCode IN (161, 142), "HIGH",
+    EventCode IN (6, 169), "MEDIUM",
+    1=1, "INFO"
+)
+| eval detail=case(
+    EventCode==6, "New WinRM session from " . coalesce(ClientIP, Source_Network_Address, "-"),
+    EventCode==169, "Auth: " . coalesce(UserName, User, "-") . " from " . coalesce(ClientIP, Source_Network_Address, "-"),
+    EventCode==161, "Auth FAILED from " . coalesce(ClientIP, Source_Network_Address, "-"),
+    1=1, substr(_raw, 1, 200)
+)
+| table _time, host, severity, event_type, detail
+| sort -_time
+| rename severity as "Severity", event_type as "Event", detail as "Details"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Severity">
+          <colorPalette type="map">{"HIGH":#DC4E41,"MEDIUM":#F1813F,"INFO":#53A051}</colorPalette>
+        </format>
+        <format type="color" field="Event">
+          <colorPalette type="map">{"Session Created":#F1813F,"User Authenticated":#F8BE34,"Auth Failure":#DC4E41,"WSMan Error":#DC4E41,"Session Closed":#708794,"Operation Started":#708794}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>SMB Server Activity</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:SMB" host=$host_filter$
+| eval event_type=case(
+    EventCode==551, "Auth Failure",
+    EventCode==1009, "Share Access Denied",
+    EventCode==1020, "Share Limits Exceeded",
+    EventCode==3000, "SMB1 Negotiation",
+    EventCode==3001, "SMB2+ Negotiation",
+    EventCode==1006, "Share Accessed",
+    1=1, "Event " . EventCode
+)
+| eval severity=case(
+    EventCode IN (551, 1009), "HIGH",
+    EventCode IN (3000), "MEDIUM",
+    1=1, "INFO"
+)
+| eval detail=case(
+    EventCode==551, "SMB Auth Failure - " . coalesce(UserName, "-"),
+    EventCode==1009, "Access Denied: " . coalesce(ShareName, "-") . " by " . coalesce(UserName, "-"),
+    EventCode==3000, "SMB1 negotiation (legacy/suspicious)",
+    EventCode==3001, "SMB2+ negotiation from " . coalesce(ClientName, "-"),
+    1=1, substr(_raw, 1, 200)
+)
+| table _time, host, severity, event_type, detail
+| sort -_time
+| rename severity as "Severity", event_type as "Event", detail as "Details"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Severity">
+          <colorPalette type="map">{"HIGH":#DC4E41,"MEDIUM":#F1813F,"INFO":#53A051}</colorPalette>
+        </format>
+        <format type="color" field="Event">
+          <colorPalette type="map">{"Auth Failure":#DC4E41,"Share Access Denied":#DC4E41,"SMB1 Negotiation":#F1813F,"SMB2+ Negotiation":#708794,"Share Accessed":#708794,"Share Limits Exceeded":#F8BE34}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 11: WMI Persistence Activity                             -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <html>
+        <h3 style="color:#F8BE34; margin:0; padding:5px 10px;">WMI Activity</h3>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>WMI Permanent Event Subscriptions &amp; Activity</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:WMI" host=$host_filter$
+| rex field=_raw "NotificationQuery\s*=\s*\"(?&lt;wmi_query&gt;[^\"]+)\""
+| rex field=_raw "Consumer\s*=\s*(?&lt;wmi_consumer&gt;[^\;]+)"
+| rex field=_raw "PossibleCause\s*=\s*(?&lt;wmi_cause&gt;.+)"
+| eval wmi_detail=coalesce(wmi_query, wmi_consumer, wmi_cause, message, Message)
+| eval event_detail=if(isnotnull(wmi_detail), wmi_detail, substr(_raw, 1, 300))
+| eval wmi_type=case(
+    match(_raw, "(?i)(EventConsumer|EventFilter|FilterToConsumerBinding)"), "PERSISTENCE (Event Subscription)",
+    match(_raw, "(?i)(Operation.*Start|OperationId)"), "WMI Operation",
+    1=1, "WMI Activity"
+)
+| table _time, host, wmi_type, event_detail
+| sort -_time
+| rename wmi_type as "Type", event_detail as "Details"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Type">
+          <colorPalette type="map">{"PERSISTENCE (Event Subscription)":#DC4E41,"WMI Operation":#F8BE34,"WMI Activity":#708794}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 12: Scored Services - DNS Server                         -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <html>
+        <h3 style="color:#F8BE34; margin:0; padding:5px 10px;">Scored Services - DNS &amp; IIS</h3>
+      </html>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <title>DNS Server - Query Volume Timeline</title>
+      <chart>
+        <search>
+          <query>
+(index=windows sourcetype="ms:dns:debug" host=$host_filter$) OR
+(index=windows sourcetype="msdns:analytical" host=$host_filter$)
+| timechart span=5m count by sourcetype
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.fieldColors">{"ms:dns:debug":#006D9C,"msdns:analytical":#F1813F}</option>
+        <option name="height">250</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>DNS Server - Top Queried Domains</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="ms:dns:debug" host=$host_filter$
+| rex field=_raw "\]\s+(?&lt;query_type&gt;\w+)\s+(?&lt;query_name&gt;\(\d+\)\S+)"
+| where isnotnull(query_name)
+| eval query_name=replace(query_name, "\(\d+\)", ".")
+| eval query_name=replace(query_name, "^\.", "")
+| eval query_name=replace(query_name, "\.$", "")
+| stats count, dc(query_type) as types by query_name
+| sort -count
+| rename query_name as "Domain", count as "Queries", types as "Record Types"
+| head 25
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Queries">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>DNS Server - Query Types &amp; Suspicious Activity</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="ms:dns:debug" host=$host_filter$
+| rex field=_raw "(?:Rcv|Snd)\s+(?&lt;dns_client_ip&gt;\d+\.\d+\.\d+\.\d+)"
+| rex field=_raw "\]\s+(?&lt;query_type&gt;\w+)\s+(?&lt;query_name&gt;\(\d+\)\S+)"
+| where isnotnull(query_type)
+| eval query_name=replace(query_name, "\(\d+\)", ".")
+| eval query_name=replace(query_name, "^\.", "")
+| eval query_name=replace(query_name, "\.$", "")
+| eval suspicious=case(
+    query_type IN ("AXFR", "IXFR"), "ZONE TRANSFER",
+    query_type=="ANY", "ANY Query (Recon/Amplification)",
+    query_type=="TXT" AND len(query_name) &gt; 50, "Long TXT (Possible Tunneling)",
+    1=1, "Normal"
+)
+| stats count, dc(dns_client_ip) as unique_clients by query_type, suspicious
+| sort -count
+| rename query_type as "Query Type", count as "Count", unique_clients as "Unique Clients", suspicious as "Assessment"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Assessment">
+          <colorPalette type="map">{"ZONE TRANSFER":#DC4E41,"ANY Query (Recon/Amplification)":#F1813F,"Long TXT (Possible Tunneling)":#DC4E41,"Normal":#53A051}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>DNS Server - Client Activity</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="ms:dns:debug" host=$host_filter$
+| rex field=_raw "(?:Rcv|Snd)\s+(?&lt;dns_client_ip&gt;\d+\.\d+\.\d+\.\d+)"
+| rex field=_raw "\]\s+(?&lt;query_type&gt;\w+)\s+(?&lt;query_name&gt;\(\d+\)\S+)"
+| where isnotnull(dns_client_ip)
+| eval query_name=replace(query_name, "\(\d+\)", ".")
+| eval query_name=replace(query_name, "^\.", "")
+| eval query_name=replace(query_name, "\.$", "")
+| stats count, dc(query_name) as unique_queries, values(query_type) as types by dns_client_ip
+| sort -count
+| rename dns_client_ip as "Client IP", count as "Queries", unique_queries as "Unique Domains", types as "Query Types"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Queries">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 13: Scored Services - IIS                                -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>IIS - Request Volume Timeline</title>
+      <chart>
+        <search>
+          <query>
+index=windows sourcetype="ms:iis:auto" host=$host_filter$
+| timechart span=5m count by sc_status limit=10
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">250</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>IIS - Status Code Distribution</title>
+      <chart>
+        <search>
+          <query>
+index=windows sourcetype="ms:iis:auto" host=$host_filter$
+| eval status_group=case(
+    sc_status &gt;= 500, "5xx Server Error",
+    sc_status &gt;= 400, "4xx Client Error",
+    sc_status &gt;= 300, "3xx Redirect",
+    sc_status &gt;= 200, "2xx Success",
+    1=1, "Other"
+)
+| stats count by status_group
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.fieldColors">{"2xx Success":#53A051,"3xx Redirect":#F8BE34,"4xx Client Error":#F1813F,"5xx Server Error":#DC4E41,"Other":#708794}</option>
+        <option name="height">250</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>IIS - Top Requested URIs</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="ms:iis:auto" host=$host_filter$
+| stats count, dc(c_ip) as unique_clients, values(cs_method) as methods, avg(time_taken) as avg_time by cs_uri_stem
+| eval avg_time=round(avg_time, 0)
+| sort -count
+| rename cs_uri_stem as "URI", count as "Requests", unique_clients as "Unique Clients", methods as "Methods", avg_time as "Avg Time (ms)"
+| head 25
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Requests">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>IIS - Top Client IPs</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="ms:iis:auto" host=$host_filter$
+| stats count, dc(cs_uri_stem) as unique_uris, values(cs_method) as methods, values(sc_status) as statuses by c_ip
+| sort -count
+| rename c_ip as "Client IP", count as "Requests", unique_uris as "Unique URIs", methods as "Methods", statuses as "Status Codes"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Requests">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <row>
+    <panel>
+      <title>IIS - Suspicious Requests</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="ms:iis:auto" host=$host_filter$
+| eval suspicious=case(
+    match(cs_uri_stem, "(?i)\.(asp|aspx|php|jsp|cgi|sh|py|pl|exe|dll|bat|cmd|ps1)$") AND sc_status &gt;= 400, "Blocked Script Access",
+    match(cs_uri_stem, "(?i)(\.\.\/|\.\.\\\\|%2e%2e|%252e)"), "Path Traversal",
+    match(cs_uri_query, "(?i)(union.*select|exec|xp_|cmd=|eval\(|system\(|passthru)"), "SQL/Command Injection",
+    match(cs_uri_query, "(?i)(&lt;script|javascript:|onerror|onload|alert\()"), "XSS Attempt",
+    match(cs_uri_stem, "(?i)(wp-admin|wp-login|phpmyadmin|xmlrpc|.env|web.config|/admin)"), "Recon/Scanner",
+    sc_status==500, "Server Error",
+    1=1, null()
+)
+| where isnotnull(suspicious)
+| table _time, host, c_ip, cs_method, cs_uri_stem, cs_uri_query, sc_status, suspicious, cs_User_Agent
+| sort -_time
+| rename c_ip as "Client IP", cs_method as "Method", cs_uri_stem as "URI", cs_uri_query as "Query", sc_status as "Status", suspicious as "Category", cs_User_Agent as "User Agent"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Category">
+          <colorPalette type="map">{"Path Traversal":#DC4E41,"SQL/Command Injection":#DC4E41,"XSS Attempt":#DC4E41,"Blocked Script Access":#F1813F,"Recon/Scanner":#F1813F,"Server Error":#F8BE34}</colorPalette>
+        </format>
+        <format type="color" field="Status">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax" minValue="200" maxValue="500"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>IIS - User Agent Analysis</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="ms:iis:auto" host=$host_filter$
+| stats count, dc(c_ip) as unique_clients, dc(cs_uri_stem) as unique_uris by cs_User_Agent
+| sort +count
+| rename cs_User_Agent as "User Agent", count as "Requests", unique_clients as "Unique Clients", unique_uris as "Unique URIs"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Requests">
+          <colorPalette type="minMidMax" maxColor="#53A051" midColor="#F8BE34" minColor="#DC4E41"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+</form>

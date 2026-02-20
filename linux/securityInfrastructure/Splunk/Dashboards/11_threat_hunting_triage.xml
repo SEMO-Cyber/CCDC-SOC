@@ -1,0 +1,971 @@
+<form version="1.1">
+  <label>Threat Hunting &amp; Triage</label>
+  <description>Active investigation workbench - hunt by IP, domain, username, process, or hostname</description>
+
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_token">
+      <label>Time Range</label>
+      <default>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="hunt_ip">
+      <label>Hunt IP Address</label>
+      <default></default>
+    </input>
+    <input type="text" token="hunt_host">
+      <label>Hunt Hostname</label>
+      <default></default>
+    </input>
+    <input type="text" token="hunt_user">
+      <label>Hunt Username</label>
+      <default></default>
+    </input>
+    <input type="text" token="hunt_domain">
+      <label>Hunt Domain/URL</label>
+      <default></default>
+    </input>
+    <input type="text" token="hunt_process">
+      <label>Hunt Process GUID/Name</label>
+      <default></default>
+    </input>
+  </fieldset>
+
+  <!-- ============================================================ -->
+  <!-- Row 1: External Lookup Links (IP Hunt) -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_ip$">
+    <panel>
+      <html>
+        <h3>External Lookups for $hunt_ip$</h3>
+        <a href="https://www.abuseipdb.com/check/$hunt_ip$" target="_blank">AbuseIPDB</a> |
+        <a href="https://www.virustotal.com/gui/ip-address/$hunt_ip$" target="_blank">VirusTotal</a> |
+        <a href="https://www.shodan.io/host/$hunt_ip$" target="_blank">Shodan</a> |
+        <a href="https://otx.alienvault.com/indicator/ip/$hunt_ip$" target="_blank">OTX AlienVault</a> |
+        <a href="https://www.greynoise.io/viz/ip/$hunt_ip$" target="_blank">GreyNoise</a> |
+        <a href="https://ipinfo.io/$hunt_ip$" target="_blank">IPInfo</a>
+      </html>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 2: IP Hunt - All Connections -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_ip$">
+    <panel>
+      <title>IP Hunt - All Connections ($hunt_ip$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn (id.orig_h=$hunt_ip$ OR id.resp_h=$hunt_ip$)
+| eval direction=if('id.orig_h'=="$hunt_ip$", "OUTBOUND", "INBOUND")
+| eval peer=if('id.orig_h'=="$hunt_ip$", 'id.resp_h', 'id.orig_h')
+| eval sent_KB=round(orig_bytes/1024, 1), recv_KB=round(resp_bytes/1024, 1)
+| table _time, direction, peer, id.resp_p, proto, service, conn_state, sent_KB, recv_KB, duration
+| sort -_time
+| rename direction as "Direction", peer as "Peer", id.resp_p as "Port", proto as "Proto", service as "Service", conn_state as "State", sent_KB as "Sent (KB)", recv_KB as "Recv (KB)", duration as "Duration (s)"
+| head 100
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Direction">
+          <colorPalette type="map">{"OUTBOUND":#F1813F,"INBOUND":#006D9C}</colorPalette>
+        </format>
+        <format type="color" field="State">
+          <colorPalette type="map">{"SF":#53A051,"S0":#DC4E41,"REJ":#DC4E41,"RSTO":#F1813F,"RSTOS0":#DC4E41,"SH":#F8BE34,"SHR":#F8BE34}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 3: IP Hunt - DNS + HTTP -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_ip$">
+    <panel>
+      <title>IP Hunt - DNS Activity ($hunt_ip$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:dns (id.orig_h=$hunt_ip$ OR answers="*$hunt_ip$*")
+| table _time, id.orig_h, query, qtype_name, rcode_name, answers
+| sort -_time
+| rename id.orig_h as "Source", query as "Query", qtype_name as "Type", rcode_name as "Response", answers as "Answers"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Response">
+          <colorPalette type="map">{"NOERROR":#53A051,"NXDOMAIN":#F1813F,"SERVFAIL":#DC4E41,"REFUSED":#DC4E41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>IP Hunt - HTTP Activity ($hunt_ip$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:http (id.orig_h=$hunt_ip$ OR id.resp_h=$hunt_ip$)
+| table _time, id.orig_h, id.resp_h, method, domain_host, uri, status_code, user_agent
+| sort -_time
+| rename id.orig_h as "Source", id.resp_h as "Dest", method as "Method", domain_host as "Host", uri as "URI", status_code as "Status", user_agent as "User Agent"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Status">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax" minValue="200" maxValue="500"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 4: IP Hunt - Auth Events + Firewall -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_ip$">
+    <panel>
+      <title>IP Hunt - Authentication Events ($hunt_ip$)</title>
+      <table>
+        <search>
+          <query>
+(index=linux sourcetype=linux_secure "$hunt_ip$") OR
+(index=windows sourcetype="WinEventLog:Security" EventCode IN (4624,4625) Source_Network_Address="$hunt_ip$") OR
+(index=linux sourcetype=cowrie src_ip="$hunt_ip$")
+| eval source_label=case(
+    sourcetype=="linux_secure", "Linux Auth",
+    sourcetype=="WinEventLog:Security", "Windows Auth",
+    sourcetype=="cowrie", "Cowrie Honeypot",
+    1=1, sourcetype
+)
+| eval event_summary=case(
+    sourcetype=="linux_secure", substr(_raw, 1, 150),
+    sourcetype=="WinEventLog:Security" AND EventCode=="4624", "Logon Success - Type " . Logon_Type . " User: " . TargetUserName,
+    sourcetype=="WinEventLog:Security" AND EventCode=="4625", "Logon FAILED - Type " . Logon_Type . " User: " . TargetUserName,
+    sourcetype=="cowrie", spath(_raw, "eventid") . " - " . spath(_raw, "message"),
+    1=1, substr(_raw, 1, 150)
+)
+| table _time, source_label, host, event_summary
+| sort -_time
+| rename source_label as "Source", event_summary as "Event Summary"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Source">
+          <colorPalette type="map">{"Linux Auth":#006D9C,"Windows Auth":#F1813F,"Cowrie Honeypot":#DC4E41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>IP Hunt - Firewall Events ($hunt_ip$)</title>
+      <table>
+        <search>
+          <query>
+index=linux sourcetype=iptables (src_ip=$hunt_ip$ OR dest_ip=$hunt_ip$)
+| table _time, host, ipt_chain, src_ip, dest_ip, dest_port, protocol
+| sort -_time
+| rename ipt_chain as "Chain", src_ip as "Source", dest_ip as "Dest", dest_port as "Port", protocol as "Proto"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Chain">
+          <colorPalette type="map">{"INPUT":#F1813F,"FORWARD":#F8BE34,"OUTPUT":#006D9C,"DROP":#DC4E41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 5: IP Hunt - TLS/Certificates + Zeek Notices -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_ip$">
+    <panel>
+      <title>IP Hunt - TLS Connections ($hunt_ip$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:ssl (id.orig_h=$hunt_ip$ OR id.resp_h=$hunt_ip$)
+| eval cert_fp=mvindex('cert_chain_fps{}', 0)
+| join type=left cert_fp [
+    search index=network sourcetype=zeek:x509
+    | rename fingerprint as cert_fp
+    | fields cert_fp, certificate.subject, certificate.issuer
+]
+| table _time, id.orig_h, id.resp_h, server_name, ja4, ja3, version, certificate.subject, certificate.issuer
+| sort -_time
+| rename id.orig_h as "Client", id.resp_h as "Server", server_name as "SNI", ja4 as "JA4", ja3 as "JA3", version as "TLS Ver", certificate.subject as "Subject", certificate.issuer as "Issuer"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>IP Hunt - Detection Alerts ($hunt_ip$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:notice (id.orig_h=$hunt_ip$ OR id.resp_h=$hunt_ip$)
+| eval source="Zeek", alert=note, severity=case(
+    match(note, "DCSync|Golden_Ticket|PetitPotam|PrintNightmare|C2"), "CRITICAL",
+    match(note, "PsExec|WMI|DCOM|Kerberoast|ASREP|Lateral"), "HIGH",
+    match(note, "Scan|Suspicious"), "MEDIUM",
+    1=1, "INFO"
+)
+| append [
+    search index=linux sourcetype=suricata:fast "$hunt_ip$"
+    | rex field=_raw "\[\*\*\]\s*\[[\d:]+\]\s*(?&lt;alert&gt;[^\[]+)\[\*\*\]"
+    | rex field=_raw "\[Priority:\s*(?&lt;pri&gt;\d+)\]"
+    | eval source="Suricata", severity=case(pri=="1", "CRITICAL", pri=="2", "HIGH", pri=="3", "MEDIUM", 1=1, "LOW")
+]
+| eval alert=coalesce(alert, note), detail=coalesce(msg, "")
+| table _time, source, alert, detail, severity
+| sort -_time
+| rename source as "Source", alert as "Alert", detail as "Details", severity as "Severity"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Severity">
+          <colorPalette type="map">{"CRITICAL":#DC4E41,"HIGH":#F1813F,"MEDIUM":#F8BE34,"LOW":#53A051,"INFO":#708794}</colorPalette>
+        </format>
+        <format type="color" field="Source">
+          <colorPalette type="map">{"Zeek":#006D9C,"Suricata":#F1813F}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 6: IP Hunt - Timeline + Associated Hosts -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_ip$">
+    <panel>
+      <title>IP Hunt - Activity Timeline ($hunt_ip$)</title>
+      <chart>
+        <search>
+          <query>
+(index=network (id.orig_h=$hunt_ip$ OR id.resp_h=$hunt_ip$ OR "tx_hosts{}"=$hunt_ip$ OR "rx_hosts{}"=$hunt_ip$)) OR
+(index=linux sourcetype=iptables (src_ip=$hunt_ip$ OR dest_ip=$hunt_ip$)) OR
+(index=linux sourcetype=cowrie src_ip="$hunt_ip$") OR
+(index=linux sourcetype=linux_secure "$hunt_ip$") OR
+(index=linux sourcetype=suricata:fast "$hunt_ip$")
+| timechart span=1m count by sourcetype
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>IP Hunt - Associated Internal Hosts ($hunt_ip$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn (id.orig_h=$hunt_ip$ OR id.resp_h=$hunt_ip$)
+| eval peer=if('id.orig_h'=="$hunt_ip$", 'id.resp_h', 'id.orig_h')
+| eval total_bytes=orig_bytes+resp_bytes
+| stats count, sum(total_bytes) as total_bytes, values(service) as services by peer
+| eval total_MB=round(total_bytes/1048576, 2)
+| fields peer, count, total_MB, services
+| sort -count
+| rename peer as "Peer", count as "Connections", total_MB as "Total (MB)", services as "Services"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Connections">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 7: Domain Hunt - External Links -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_domain$">
+    <panel>
+      <html>
+        <h3>External Lookups for $hunt_domain$</h3>
+        <a href="https://www.virustotal.com/gui/domain/$hunt_domain$" target="_blank">VirusTotal</a> |
+        <a href="https://urlhaus.abuse.ch/browse.php?search=$hunt_domain$" target="_blank">URLhaus</a> |
+        <a href="https://otx.alienvault.com/indicator/domain/$hunt_domain$" target="_blank">OTX AlienVault</a> |
+        <a href="https://www.whois.com/whois/$hunt_domain$" target="_blank">WHOIS</a>
+      </html>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 8: Domain Hunt - DNS + HTTP -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_domain$">
+    <panel>
+      <title>Domain Hunt - DNS Queries ($hunt_domain$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:dns query="*$hunt_domain$*"
+| eval dns_query=query, source="Zeek"
+| append [
+    search index=windows sourcetype="ms:dns:debug"
+    | rex field=_raw "\]\s+(?&lt;query_type&gt;\w+)\s+(?&lt;dns_query&gt;\(\d+\)\S+)"
+    | where isnotnull(dns_query)
+    | eval dns_query=replace(dns_query, "\(\d+\)", ".")
+    | eval dns_query=replace(dns_query, "^\.", "")
+    | eval dns_query=replace(dns_query, "\.$", "")
+    | search dns_query="*$hunt_domain$*"
+    | rex field=_raw "(?:Rcv|Snd)\s+(?&lt;dns_client_ip&gt;\d+\.\d+\.\d+\.\d+)"
+    | eval rcode_name=case(match(_raw, "NOERROR"), "NOERROR", match(_raw, "NXDOMAIN"), "NXDOMAIN", match(_raw, "SERVFAIL"), "SERVFAIL", match(_raw, "REFUSED"), "REFUSED", 1=1, "OTHER")
+    | rename dns_client_ip as id.orig_h
+    | eval source="Windows DNS", answers="N/A"
+]
+| eval query=coalesce(query, dns_query)
+| stats count as queries, min(_time) as first_seen, max(_time) as last_seen, dc(id.orig_h) as unique_clients, values(rcode_name) as rcodes, values(answers) as resolved_ips, values(source) as sources by query
+| eval first_seen=strftime(first_seen, "%m/%d %H:%M:%S"), last_seen=strftime(last_seen, "%m/%d %H:%M:%S")
+| sort -queries
+| rename query as "Query", queries as "Count", first_seen as "First Seen", last_seen as "Last Seen", unique_clients as "Clients", rcodes as "Response Codes", resolved_ips as "Resolved IPs", sources as "Source"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Count">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Domain Hunt - HTTP Traffic ($hunt_domain$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:http domain_host="*$hunt_domain$*"
+| table _time, id.orig_h, method, uri, status_code, user_agent, response_body_len
+| sort -_time
+| rename id.orig_h as "Source", method as "Method", uri as "URI", status_code as "Status", user_agent as "User Agent", response_body_len as "Resp Len"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Status">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax" minValue="200" maxValue="500"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 9: Domain Hunt - TLS Certs + Resolution History -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_domain$">
+    <panel>
+      <title>Domain Hunt - TLS Certificates ($hunt_domain$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:ssl server_name="*$hunt_domain$*"
+| eval cert_fp=mvindex('cert_chain_fps{}', 0)
+| join type=left cert_fp [
+    search index=network sourcetype=zeek:x509
+    | rename fingerprint as cert_fp
+    | eval not_before=strftime('certificate.not_valid_before', "%Y-%m-%d"), not_after=strftime('certificate.not_valid_after', "%Y-%m-%d")
+    | fields cert_fp, certificate.subject, certificate.issuer, not_before, not_after
+]
+| table _time, id.orig_h, id.resp_h, server_name, version, ja4, certificate.subject, certificate.issuer, not_before, not_after
+| sort -_time
+| rename id.orig_h as "Client", id.resp_h as "Server", server_name as "SNI", version as "TLS Ver", ja4 as "JA4", certificate.subject as "Subject", certificate.issuer as "Issuer", not_before as "Valid From", not_after as "Valid Until"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>Domain Hunt - Resolution History ($hunt_domain$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:dns query="*$hunt_domain$*"
+| eval dns_query=query, source="Zeek"
+| append [
+    search index=windows sourcetype="ms:dns:debug"
+    | rex field=_raw "\]\s+(?&lt;query_type&gt;\w+)\s+(?&lt;dns_query&gt;\(\d+\)\S+)"
+    | where isnotnull(dns_query)
+    | eval dns_query=replace(dns_query, "\(\d+\)", ".")
+    | eval dns_query=replace(dns_query, "^\.", "")
+    | eval dns_query=replace(dns_query, "\.$", "")
+    | search dns_query="*$hunt_domain$*"
+    | rex field=_raw "(?:Rcv|Snd)\s+(?&lt;dns_client_ip&gt;\d+\.\d+\.\d+\.\d+)"
+    | rename dns_client_ip as id.orig_h
+    | eval source="Windows DNS", answers="N/A"
+]
+| eval query=coalesce(query, dns_query)
+| stats values(answers) as resolved_ips, count as queries, dc(id.orig_h) as querying_hosts, values(source) as sources, min(_time) as first_seen, max(_time) as last_seen by query
+| eval first_seen=strftime(first_seen, "%m/%d %H:%M:%S"), last_seen=strftime(last_seen, "%m/%d %H:%M:%S")
+| sort -queries
+| rename query as "Query", resolved_ips as "Resolved IPs", queries as "Queries", querying_hosts as "Querying Hosts", sources as "Source", first_seen as "First Seen", last_seen as "Last Seen"
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Queries">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 10: Process Hunt - Process Tree + Context -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_process$">
+    <panel>
+      <title>Process Hunt - Process Tree ($hunt_process$)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Sysmon" EventCode=1
+    (ProcessGuid="$hunt_process$" OR Image="*$hunt_process$*" OR ProcessId="$hunt_process$")
+| head 1
+| fields _time, ProcessGuid, ParentProcessGuid, Image, CommandLine, User, ProcessId, ParentProcessId, ParentImage, ParentCommandLine, host
+| eval depth=0, node_type="TARGET"
+| append [
+    search index=windows sourcetype="WinEventLog:Sysmon" EventCode=1
+        (ProcessGuid="$hunt_process$" OR Image="*$hunt_process$*" OR ProcessId="$hunt_process$")
+    | head 1
+    | fields ParentProcessGuid
+    | rename ParentProcessGuid as search_guid
+    | map search="search index=windows sourcetype=\"WinEventLog:Sysmon\" EventCode=1 ProcessGuid=\"$search_guid$\"
+        | fields _time, ProcessGuid, ParentProcessGuid, Image, CommandLine, User, ProcessId, ParentProcessId, ParentImage, ParentCommandLine, host
+        | eval depth=-1, node_type=\"PARENT\""
+]
+| append [
+    search index=windows sourcetype="WinEventLog:Sysmon" EventCode=1
+        (ProcessGuid="$hunt_process$" OR Image="*$hunt_process$*" OR ProcessId="$hunt_process$")
+    | head 1
+    | fields ParentProcessGuid
+    | rename ParentProcessGuid as child_ppguid
+    | map search="search index=windows sourcetype=\"WinEventLog:Sysmon\" EventCode=1 ProcessGuid=\"$child_ppguid$\"
+        | fields ParentProcessGuid
+        | rename ParentProcessGuid as search_guid
+        | map search=\"search index=windows sourcetype=\\\"WinEventLog:Sysmon\\\" EventCode=1 ProcessGuid=\\\"$search_guid$\\\"
+            | fields _time, ProcessGuid, ParentProcessGuid, Image, CommandLine, User, ProcessId, ParentProcessId, ParentImage, ParentCommandLine, host
+            | eval depth=-2, node_type=\\\"GRANDPARENT\\\"\""
+]
+| append [
+    search index=windows sourcetype="WinEventLog:Sysmon" EventCode=1
+        (ProcessGuid="$hunt_process$" OR Image="*$hunt_process$*" OR ProcessId="$hunt_process$")
+    | head 1
+    | fields ProcessGuid
+    | rename ProcessGuid as parent_guid
+    | map search="search index=windows sourcetype=\"WinEventLog:Sysmon\" EventCode=1 ParentProcessGuid=\"$parent_guid$\"
+        | fields _time, ProcessGuid, ParentProcessGuid, Image, CommandLine, User, ProcessId, ParentProcessId, ParentImage, ParentCommandLine, host
+        | eval depth=1, node_type=\"CHILD\""
+]
+| eval tree_label=case(
+    depth==-2, "  [GP] ",
+    depth==-1, "    [P] ",
+    depth==0,  "      [*] ",
+    depth==1,  "        [C] ",
+    1=1, "    "
+) . Image
+| sort depth, _time
+| table _time, node_type, tree_label, ProcessId, CommandLine, User, host
+| rename node_type as "Relation", tree_label as "Process", ProcessId as "PID", CommandLine as "Command Line"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Relation">
+          <colorPalette type="map">{"TARGET":#DC4E41,"PARENT":#F1813F,"GRANDPARENT":#F8BE34,"CHILD":#006D9C}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 10B: Process Hunt - Network + File + Registry + DNS Context -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_process$">
+    <panel>
+      <title>Process Hunt - All Activity Context ($hunt_process$)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Sysmon" (ProcessGuid="$hunt_process$" OR Image="*$hunt_process$*" OR ProcessId="$hunt_process$")
+    EventCode IN (1, 3, 11, 13, 22)
+| eval activity_type=case(
+    EventCode=="1", "Process Create",
+    EventCode=="3", "Network Connect",
+    EventCode=="11", "File Create",
+    EventCode=="13", "Registry Change",
+    EventCode=="22", "DNS Query",
+    1=1, "Other"
+)
+| eval detail=case(
+    EventCode=="1", "CMD: " . CommandLine,
+    EventCode=="3", DestinationIp . ":" . DestinationPort . " (" . Protocol . ")",
+    EventCode=="11", TargetFilename,
+    EventCode=="13", TargetObject . " = " . Details,
+    EventCode=="22", QueryName . " -> " . QueryResults,
+    1=1, substr(_raw, 1, 200)
+)
+| table _time, host, activity_type, Image, detail, User
+| sort -_time
+| rename activity_type as "Activity", detail as "Details"
+| head 100
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Activity">
+          <colorPalette type="map">{"Process Create":#F1813F,"Network Connect":#006D9C,"File Create":#62B3B2,"Registry Change":#9C6ADE,"DNS Query":#708794,"Other":#708794}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 11: User Hunt - Auth Events + Logon Locations -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_user$">
+    <panel>
+      <title>User Hunt - All Authentication Events ($hunt_user$)</title>
+      <table>
+        <search>
+          <query>
+(index=linux sourcetype=linux_secure "$hunt_user$") OR
+(index=windows sourcetype="WinEventLog:Security" EventCode IN (4624,4625,4634,4648,4672) (TargetUserName="$hunt_user$" OR SubjectUserName="$hunt_user$")) OR
+(index=linux sourcetype=cowrie username="$hunt_user$")
+| eval source_type=case(
+    sourcetype=="linux_secure", "Linux",
+    sourcetype=="WinEventLog:Security", "Windows",
+    sourcetype=="cowrie", "Cowrie",
+    1=1, sourcetype
+)
+| eval event_type=case(
+    sourcetype=="linux_secure" AND match(_raw, "Accepted"), "Success",
+    sourcetype=="linux_secure" AND match(_raw, "Failed|failure"), "Failed",
+    sourcetype=="WinEventLog:Security" AND EventCode=="4624", "Success",
+    sourcetype=="WinEventLog:Security" AND EventCode=="4625", "Failed",
+    sourcetype=="WinEventLog:Security" AND EventCode=="4634", "Logoff",
+    sourcetype=="WinEventLog:Security" AND EventCode=="4648", "Explicit Creds",
+    sourcetype=="WinEventLog:Security" AND EventCode=="4672", "Privilege",
+    sourcetype=="cowrie", "Honeypot",
+    1=1, "Other"
+)
+| eval source_ip=coalesce(Source_Network_Address, src_ip, "N/A")
+| rex field=_raw "from\s+(?&lt;linux_src_ip&gt;\d+\.\d+\.\d+\.\d+)"
+| eval source_ip=if(source_ip=="N/A" AND isnotnull(linux_src_ip), linux_src_ip, source_ip)
+| table _time, host, source_type, event_type, source_ip
+| sort -_time
+| rename source_type as "Source", event_type as "Event Type", source_ip as "Source IP"
+| head 100
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Event Type">
+          <colorPalette type="map">{"Success":#53A051,"Failed":#DC4E41,"Logoff":#708794,"Explicit Creds":#F1813F,"Privilege":#F8BE34,"Honeypot":#DC4E41,"Other":#708794}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>User Hunt - Logon Locations ($hunt_user$)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Security" EventCode=4624 TargetUserName="$hunt_user$"
+| stats count, values(Logon_Type) as logon_types, min(_time) as first_seen, max(_time) as last_seen by Source_Network_Address, host
+| eval first_seen=strftime(first_seen, "%m/%d %H:%M:%S"), last_seen=strftime(last_seen, "%m/%d %H:%M:%S")
+| sort -count
+| rename Source_Network_Address as "Source IP", host as "Destination", count as "Logons", logon_types as "Logon Types", first_seen as "First Seen", last_seen as "Last Seen"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Logons">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 12: User Hunt - Process Execution + PowerShell -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_user$">
+    <panel>
+      <title>User Hunt - Process Execution ($hunt_user$)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Sysmon" EventCode=1 User="*$hunt_user$*"
+| eval proc=replace(Image, ".*\\\\", "")
+| table _time, host, proc, Image, CommandLine, ParentImage
+| sort -_time
+| rename proc as "Process", CommandLine as "Command Line", ParentImage as "Parent Process"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>User Hunt - PowerShell Activity ($hunt_user$)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:PowerShell" EventCode=4104 (UserID="*$hunt_user$*" OR User="*$hunt_user$*")
+| eval snippet=substr(ScriptBlockText, 1, 300)
+| table _time, host, snippet
+| sort -_time
+| rename snippet as "Script Block (300 chars)"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 13: User Hunt - Lateral Movement + File Changes -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_user$">
+    <panel>
+      <title>User Hunt - Lateral Movement Map ($hunt_user$)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Security" EventCode=4624 Logon_Type=3 TargetUserName="$hunt_user$"
+| stats count, min(_time) as first_seen, max(_time) as last_seen by Source_Network_Address, host
+| eval first_seen=strftime(first_seen, "%m/%d %H:%M:%S"), last_seen=strftime(last_seen, "%m/%d %H:%M:%S")
+| sort -count
+| rename Source_Network_Address as "Source (From)", host as "Destination (To)", count as "Connections", first_seen as "First Seen", last_seen as "Last Seen"
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Connections">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>User Hunt - File Changes on Active Hosts ($hunt_user$)</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Security" EventCode=4624 TargetUserName="$hunt_user$"
+| stats values(host) as active_hosts
+| mvexpand active_hosts
+| rename active_hosts as host_filter
+| map maxsearches=10 search="search (index=linux sourcetype=webfim host=\"$host_filter$\") OR (index=windows sourcetype=\"WinEventLog:Sysmon\" EventCode=11 host=\"$host_filter$\")
+    | eval change_detail=case(
+        sourcetype==\"webfim\", file_path . \" (\" . action . \")\",
+        sourcetype==\"WinEventLog:Sysmon\", TargetFilename,
+        1=1, substr(_raw, 1, 150)
+    )
+    | table _time, host, sourcetype, change_detail, User
+    | head 15"
+| sort -_time
+| rename sourcetype as "Source", change_detail as "File Change"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 14: Host Hunt - Unified Timeline -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_host$">
+    <panel>
+      <title>Host Hunt - Unified Timeline ($hunt_host$)</title>
+      <table>
+        <search>
+          <query>
+(index=linux host=$hunt_host$) OR
+(index=windows host=$hunt_host$) OR
+(index=windows host=$hunt_host$)
+| eval category=case(
+    sourcetype=="linux_secure" AND match(_raw, "Accepted|Failed|session"), "Auth",
+    sourcetype=="WinEventLog:Security" AND EventCode IN ("4624","4625","4634","4648","4672"), "Auth",
+    sourcetype=="WinEventLog:Sysmon" AND EventCode=="1", "Execution",
+    sourcetype=="WinEventLog:Sysmon" AND EventCode=="3", "Network",
+    sourcetype=="WinEventLog:Sysmon" AND EventCode=="11", "FileCreate",
+    sourcetype=="WinEventLog:Sysmon" AND EventCode IN ("12","13"), "Registry",
+    sourcetype=="WinEventLog:PowerShell", "Execution",
+    sourcetype=="WinEventLog:WinRM", "Lateral Movement",
+    sourcetype=="WinEventLog:SMB", "Lateral Movement",
+    sourcetype=="linux_secure" AND match(_raw, "sudo:"), "Execution",
+    sourcetype IN ("zeek:notice","suricata:fast"), "Detection",
+    sourcetype=="falco:alerts", "Detection",
+    sourcetype=="iptables", "Firewall",
+    sourcetype=="cowrie", "Honeypot",
+    sourcetype IN ("modsecurity","coraza:audit"), "WAF",
+    sourcetype IN ("webfim","yara"), "Monitor",
+    sourcetype IN ("ms:dns:debug","msdns:analytical"), "Service",
+    sourcetype=="ms:iis:auto", "Service",
+    sourcetype=="WinEventLog:Sysmon" AND EventCode=="22", "Network",
+    sourcetype=="WinEventLog:System", "System",
+    sourcetype=="WinEventLog:Defender", "Detection",
+    1=1, "Other"
+)
+| eval summary=case(
+    sourcetype=="linux_secure", substr(_raw, 1, 150),
+    sourcetype=="WinEventLog:Security" AND EventCode=="4624", "Logon Success - " . TargetUserName . " Type:" . Logon_Type . " from " . Source_Network_Address,
+    sourcetype=="WinEventLog:Security" AND EventCode=="4625", "Logon FAILED - " . TargetUserName . " Type:" . Logon_Type . " from " . Source_Network_Address,
+    sourcetype=="WinEventLog:Sysmon" AND EventCode=="1", "Exec: " . Image . " | " . substr(CommandLine, 1, 80),
+    sourcetype=="WinEventLog:Sysmon" AND EventCode=="3", "Net: " . Image . " -> " . DestinationIp . ":" . DestinationPort,
+    sourcetype=="WinEventLog:Sysmon" AND EventCode=="11", "File: " . TargetFilename,
+    sourcetype=="WinEventLog:Sysmon" AND EventCode IN ("12","13"), "Reg: " . TargetObject,
+    sourcetype=="WinEventLog:Sysmon" AND EventCode=="22", "DNS: " . QueryName,
+    sourcetype=="WinEventLog:PowerShell", "PS: " . substr(ScriptBlockText, 1, 100),
+    sourcetype=="WinEventLog:WinRM", "WinRM: Event " . EventCode . " - " . substr(_raw, 1, 100),
+    sourcetype=="WinEventLog:SMB", "SMB: Event " . EventCode . " - " . substr(_raw, 1, 100),
+    sourcetype=="iptables", "FW: " . ipt_chain . " " . src_ip . " -> " . dest_ip . ":" . dest_port,
+    sourcetype=="cowrie", spath(_raw, "eventid") . " " . spath(_raw, "message"),
+    sourcetype=="falco:alerts", spath(_raw, "rule") . ": " . spath(_raw, "output"),
+    sourcetype=="WinEventLog:System" AND EventCode IN ("7045","7036"), "Service: " . ServiceName,
+    sourcetype=="WinEventLog:Defender", "Defender: " . substr(_raw, 1, 100),
+    sourcetype IN ("ms:dns:debug","msdns:analytical"), "DNS Svc: " . substr(_raw, 1, 120),
+    sourcetype=="ms:iis:auto", "IIS: " . cs_method . " " . cs_uri_stem . " " . sc_status . " from " . c_ip,
+    1=1, substr(_raw, 1, 150)
+)
+| table _time, category, sourcetype, summary
+| sort -_time
+| rename category as "Category", sourcetype as "Source Type", summary as "Summary"
+| head 200
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">20</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Category">
+          <colorPalette type="map">{"Auth":#006D9C,"Execution":#F1813F,"Network":#708794,"FileCreate":#62B3B2,"Registry":#9C6ADE,"Detection":#DC4E41,"Firewall":#F8BE34,"Lateral Movement":#DC4E41,"Service":#62B3B2,"Monitor":#53A051,"Honeypot":#A2CC3E,"WAF":#F8BE34,"System":#708794,"Other":#708794}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 15: Host Hunt - Network + Services -->
+  <!-- ============================================================ -->
+  <row depends="$hunt_host$">
+    <panel>
+      <title>Host Hunt - Network Connections ($hunt_host$)</title>
+      <table>
+        <search>
+          <query>
+(index=windows sourcetype="WinEventLog:Sysmon" EventCode=3 host=$hunt_host$)
+OR (index=linux sourcetype=iptables host=$hunt_host$)
+| eval detail=case(
+    sourcetype=="WinEventLog:Sysmon", Image . " -> " . DestinationIp . ":" . DestinationPort . " (" . Protocol . ")",
+    sourcetype=="iptables", ipt_chain . ": " . src_ip . " -> " . dest_ip . ":" . dest_port . " (" . protocol . ")",
+    1=1, substr(_raw, 1, 150)
+)
+| eval source_type=case(
+    sourcetype=="WinEventLog:Sysmon", "Sysmon",
+    sourcetype=="iptables", "iptables",
+    1=1, sourcetype
+)
+| table _time, source_type, detail
+| sort -_time
+| rename source_type as "Source", detail as "Connection Details"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Source">
+          <colorPalette type="map">{"Sysmon":#006D9C,"iptables":#F1813F}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Host Hunt - Service Events ($hunt_host$)</title>
+      <table>
+        <search>
+          <query>
+(index=windows sourcetype="WinEventLog:System" EventCode IN (7045,7036) host=$hunt_host$)
+OR (index=windows sourcetype="WinEventLog:Sysmon" EventCode=1 host=$hunt_host$
+    Image IN ("*\\sc.exe","*\\services.exe"))
+| eval detail=case(
+    sourcetype=="WinEventLog:System" AND EventCode=="7045", "NEW SERVICE: " . ServiceName . " | " . ImagePath . " | Type: " . ServiceType . " | Start: " . StartType,
+    sourcetype=="WinEventLog:System" AND EventCode=="7036", "STATE CHANGE: " . ServiceName . " -> " . param1,
+    sourcetype=="WinEventLog:Sysmon", "sc.exe: " . CommandLine,
+    1=1, substr(_raw, 1, 200)
+)
+| eval severity=case(
+    EventCode=="7045", "HIGH",
+    EventCode=="7036" AND match(param1, "running"), "INFO",
+    EventCode=="7036" AND match(param1, "stopped"), "WARN",
+    1=1, "INFO"
+)
+| table _time, severity, detail
+| sort -_time
+| rename severity as "Severity", detail as "Service Event"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Severity">
+          <colorPalette type="map">{"HIGH":#DC4E41,"WARN":#F8BE34,"INFO":#53A051}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+</form>

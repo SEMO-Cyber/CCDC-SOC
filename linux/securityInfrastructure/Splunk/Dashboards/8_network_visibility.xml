@@ -1,0 +1,733 @@
+<form version="1.1">
+  <label>Network Visibility</label>
+  <description>Network situational awareness - traffic patterns, top talkers, protocols, user agents, certificates</description>
+
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_token">
+      <label>Time Range</label>
+      <default>
+        <earliest>-4h@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="src_filter">
+      <label>Source IP Filter</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="dest_filter">
+      <label>Destination IP Filter</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="tracked_ip">
+      <label>Tracked IP</label>
+      <default></default>
+    </input>
+  </fieldset>
+
+  <!-- ============================================================ -->
+  <!-- Row 1: 6 KPI Score Cards -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <single>
+        <title>Total Connections</title>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="underLabel">Zeek conn.log</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Unique Internal Hosts</title>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$
+| rename "id.orig_h" as src, "id.resp_h" as dst
+| eval all_ips=mvappend(src, dst)
+| mvexpand all_ips
+| where cidrmatch("192.168.0.0/16", all_ips) OR cidrmatch("10.0.0.0/8", all_ips) OR cidrmatch("172.16.0.0/12", all_ips)
+| stats dc(all_ips) as count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="underLabel">RFC1918 Addresses</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Unique External IPs</title>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$
+| rename "id.orig_h" as src, "id.resp_h" as dst
+| eval all_ips=mvappend(src, dst)
+| mvexpand all_ips
+| where NOT cidrmatch("192.168.0.0/16", all_ips) AND NOT cidrmatch("10.0.0.0/8", all_ips) AND NOT cidrmatch("172.16.0.0/12", all_ips) AND NOT cidrmatch("127.0.0.0/8", all_ips) AND NOT cidrmatch("fe80::/10", all_ips) AND NOT cidrmatch("ff00::/8", all_ips)
+| stats dc(all_ips) as count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="underLabel">Non-RFC1918</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>DNS Queries</title>
+        <search>
+          <query>
+index=network sourcetype=zeek:dns id.orig_h=$src_filter$
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="underLabel">Zeek dns.log</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Total Data Transferred</title>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$
+| stats sum(orig_bytes) as out, sum(resp_bytes) as in
+| eval total_GB=round((out+in)/1073741824, 2)
+| fields total_GB
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="underLabel">Total GB</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Active Protocols</title>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$ service!="-" service=*
+| stats dc(service) as count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="underLabel">Distinct Services</option>
+        <option name="useColors">0</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 2: Top Talkers + Traffic Volume Timeline -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Top Talkers</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$
+| stats sum(orig_bytes) as bytes_out, sum(resp_bytes) as bytes_in, count as connections, dc(id.resp_p) as unique_ports, values(service) as services by id.orig_h, id.resp_h
+| eval total_MB=round((bytes_out+bytes_in)/1048576, 2)
+| sort -total_MB
+| rename id.orig_h as "Source", id.resp_h as "Destination", bytes_out as "Bytes Out", bytes_in as "Bytes In", total_MB as "Total (MB)", connections as "Connections", unique_ports as "Unique Ports", services as "Services"
+| head 25
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">cell</option>
+        <option name="refresh.display">progressbar</option>
+        <drilldown>
+          <set token="tracked_ip">$row.Source$</set>
+        </drilldown>
+        <format type="color" field="Total (MB)">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Traffic Volume Timeline</title>
+      <chart>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$
+| timechart span=5m sum(orig_bytes) as bytes_out, sum(resp_bytes) as bytes_in
+| eval MB_out=round(bytes_out/1048576, 2), MB_in=round(bytes_in/1048576, 2)
+| fields _time, MB_out, MB_in
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">area</option>
+        <option name="charting.chart.stackMode">default</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 3: Connection State Distribution + Protocol Breakdown by Host -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Connection State Distribution</title>
+      <chart>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$
+| stats count by conn_state
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.fieldColors">{"SF":#53A051,"S0":#DC4E41,"REJ":#DC4E41,"RSTO":#F1813F,"RSTOS0":#DC4E41,"S1":#F8BE34,"SH":#F8BE34,"SHR":#F8BE34,"OTH":#708794}</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Protocol Breakdown by Host</title>
+      <chart>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$ service!="-" service=*
+| chart count over id.orig_h by service limit=10
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 4: Connections by Service Port + Internal vs External Traffic -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Connections by Service Port</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$
+| stats count, dc(id.orig_h) as unique_sources, dc(id.resp_h) as unique_destinations by id.resp_p, service
+| sort -count
+| rename id.resp_p as "Port", service as "Service", count as "Connections", unique_sources as "Unique Sources", unique_destinations as "Unique Destinations"
+| head 25
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Connections">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Internal vs External Traffic</title>
+      <chart>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn id.orig_h=$src_filter$ id.resp_h=$dest_filter$
+| eval src_internal=if(cidrmatch("192.168.0.0/16", id.orig_h) OR cidrmatch("10.0.0.0/8", id.orig_h) OR cidrmatch("172.16.0.0/12", id.orig_h), 1, 0)
+| eval dst_internal=if(cidrmatch("192.168.0.0/16", id.resp_h) OR cidrmatch("10.0.0.0/8", id.resp_h) OR cidrmatch("172.16.0.0/12", id.resp_h), 1, 0)
+| eval traffic_type=case(
+    src_internal==1 AND dst_internal==1, "Internal-to-Internal",
+    src_internal==1 AND dst_internal==0, "Internal-to-External",
+    src_internal==0 AND dst_internal==1, "External-to-Internal",
+    1=1, "External-to-External"
+)
+| timechart span=5m count by traffic_type
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.fieldColors">{"Internal-to-Internal":#53A051,"Internal-to-External":#F1813F,"External-to-Internal":#006D9C,"External-to-External":#708794}</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 5: Top Queried Domains + DNS Query Volume by Host -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Top Queried Domains</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:dns id.orig_h=$src_filter$
+| where isnotnull(query)
+| rex field=query "(?&lt;base_domain&gt;[^.]+\.[^.]+)$"
+| where isnotnull(base_domain)
+| stats count, dc(id.orig_h) as clients, values(rcode_name) as responses by base_domain
+| sort -count
+| rename base_domain as "Domain", count as "Queries", clients as "Clients", responses as "Responses"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Queries">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>DNS Query Volume by Host</title>
+      <chart>
+        <search>
+          <query>
+index=network sourcetype=zeek:dns id.orig_h=$src_filter$
+| timechart span=5m count by id.orig_h limit=10
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">line</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 6: DNS Query Type Distribution + Rare/Single-Client Domains -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>DNS Query Type Distribution</title>
+      <chart>
+        <search>
+          <query>
+index=network sourcetype=zeek:dns id.orig_h=$src_filter$ qtype_name=*
+| stats count by qtype_name
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Rare Domains (Single-Client)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:dns id.orig_h=$src_filter$
+| where isnotnull(query)
+| rex field=query "(?&lt;base_domain&gt;[^.]+\.[^.]+)$"
+| where isnotnull(base_domain)
+| stats count, dc(id.orig_h) as client_count, values(id.orig_h) as clients by base_domain
+| where client_count==1 AND count&gt;=3
+| sort -count
+| rename base_domain as "Domain", count as "Queries", client_count as "Client Count", clients as "Client IP"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Queries">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 7: Rare User Agents + User Agent Inventory -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Rare User Agents</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:http id.orig_h=$src_filter$ id.resp_h=$dest_filter$ user_agent=*
+| stats count, dc(id.orig_h) as hosts, min(_time) as first_seen by user_agent
+| eval first_seen=strftime(first_seen, "%m/%d %H:%M")
+| sort +count
+| rename user_agent as "User Agent", count as "Requests", hosts as "Hosts", first_seen as "First Seen"
+| head 25
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Requests">
+          <colorPalette type="minMidMax" maxColor="#53A051" midColor="#F8BE34" minColor="#DC4E41"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>User Agent Inventory</title>
+      <chart>
+        <search>
+          <query>
+index=network sourcetype=zeek:http id.orig_h=$src_filter$ id.resp_h=$dest_filter$ user_agent=*
+| stats count by user_agent
+| sort -count
+| head 15
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">pie</option>
+        <option name="charting.drilldown">none</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 8: JA4/JA3 Fingerprints + Certificate Inventory -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>JA4/JA3 Fingerprints</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:ssl id.orig_h=$src_filter$ id.resp_h=$dest_filter$
+| where isnotnull(ja4) OR isnotnull(ja3)
+| stats count, dc(id.orig_h) as hosts, values(id.orig_h) as host_list, values(server_name) as server_names by ja4, ja3
+| sort -count
+| rename ja4 as "JA4", ja3 as "JA3", count as "Connections", hosts as "Hosts", host_list as "Host List", server_names as "Server Names"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Connections">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Certificate Inventory</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:x509
+| stats count, dc(id) as connections by certificate.subject, certificate.issuer
+| eval is_self_signed=if('certificate.subject'=='certificate.issuer', "YES", "NO")
+| sort -count
+| rename certificate.subject as "Subject", certificate.issuer as "Issuer", count as "Count", connections as "Connections", is_self_signed as "Self-Signed"
+| head 25
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Self-Signed">
+          <colorPalette type="map">{"YES":#DC4E41,"NO":#53A051}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 9: SMB Share Access + DCE-RPC Operations -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>SMB Share Access</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:smb_mapping id.orig_h=$src_filter$ id.resp_h=$dest_filter$
+| table _time, id.orig_h, id.resp_h, path, share_type
+| sort -_time
+| rename id.orig_h as "Source", id.resp_h as "Destination", path as "Share Path", share_type as "Share Type"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+    <panel>
+      <title>DCE-RPC Operations</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:dce_rpc id.orig_h=$src_filter$ id.resp_h=$dest_filter$
+| stats count, dc(id.orig_h) as unique_sources by endpoint, operation
+| sort -count
+| rename endpoint as "Endpoint", operation as "Operation", count as "Calls", unique_sources as "Unique Sources"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Endpoint">
+          <colorPalette type="map">{"drsuapi":#DC4E41,"svcctl":#F1813F,"samr":#F8BE34,"lsarpc":#F8BE34,"srvsvc":#006D9C,"epmapper":#708794}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 10: Suspicious IP Tracker (depends on tracked_ip token) -->
+  <!-- ============================================================ -->
+
+  <!-- Row 10A: Tracked IP - All Connections -->
+  <row depends="$tracked_ip$">
+    <panel>
+      <title>Tracked IP - All Connections ($tracked_ip$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn (id.orig_h=$tracked_ip$ OR id.resp_h=$tracked_ip$)
+| eval direction=if(id.orig_h=="$tracked_ip$", "OUTBOUND", "INBOUND")
+| eval peer=if(id.orig_h=="$tracked_ip$", id.resp_h, id.orig_h)
+| eval orig_MB=round(orig_bytes/1048576, 3), resp_MB=round(resp_bytes/1048576, 3)
+| table _time, direction, peer, id.resp_p, service, conn_state, orig_MB, resp_MB, duration
+| sort -_time
+| rename direction as "Direction", peer as "Peer", id.resp_p as "Port", service as "Service", conn_state as "State", orig_MB as "Sent (MB)", resp_MB as "Recv (MB)", duration as "Duration (s)"
+| head 100
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Direction">
+          <colorPalette type="map">{"OUTBOUND":#F1813F,"INBOUND":#006D9C}</colorPalette>
+        </format>
+        <format type="color" field="State">
+          <colorPalette type="map">{"SF":#53A051,"S0":#DC4E41,"REJ":#DC4E41,"RSTO":#F1813F,"RSTOS0":#DC4E41,"SH":#F8BE34,"SHR":#F8BE34}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Row 10B: Tracked IP - DNS + HTTP -->
+  <row depends="$tracked_ip$">
+    <panel>
+      <title>Tracked IP - DNS Queries ($tracked_ip$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:dns (id.orig_h=$tracked_ip$ OR id.resp_h=$tracked_ip$)
+| table _time, id.orig_h, query, qtype_name, rcode_name, answers
+| sort -_time
+| rename id.orig_h as "Source", query as "Query", qtype_name as "Type", rcode_name as "Response", answers as "Answers"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Response">
+          <colorPalette type="map">{"NOERROR":#53A051,"NXDOMAIN":#F1813F,"SERVFAIL":#DC4E41,"REFUSED":#DC4E41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Tracked IP - HTTP Requests ($tracked_ip$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:http (id.orig_h=$tracked_ip$ OR id.resp_h=$tracked_ip$)
+| table _time, id.orig_h, id.resp_h, method, domain_host, uri, status_code, user_agent
+| sort -_time
+| rename id.orig_h as "Source", id.resp_h as "Destination", method as "Method", domain_host as "Host", uri as "URI", status_code as "Status", user_agent as "User Agent"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+      </table>
+    </panel>
+  </row>
+
+  <!-- Row 10C: Tracked IP - Timeline -->
+  <row depends="$tracked_ip$">
+    <panel>
+      <title>Tracked IP - Event Timeline ($tracked_ip$)</title>
+      <chart>
+        <search>
+          <query>
+index=network (id.orig_h=$tracked_ip$ OR id.resp_h=$tracked_ip$ OR "tx_hosts{}"=$tracked_ip$ OR "rx_hosts{}"=$tracked_ip$)
+| timechart span=1m count by sourcetype
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- Row 10D: Tracked IP - Associated Hosts -->
+  <row depends="$tracked_ip$">
+    <panel>
+      <title>Tracked IP - Associated Internal Hosts ($tracked_ip$)</title>
+      <table>
+        <search>
+          <query>
+index=network sourcetype=zeek:conn (id.orig_h=$tracked_ip$ OR id.resp_h=$tracked_ip$)
+| eval peer_ip=if(id.orig_h=="$tracked_ip$", id.resp_h, id.orig_h)
+| where cidrmatch("192.168.0.0/16", peer_ip) OR cidrmatch("10.0.0.0/8", peer_ip) OR cidrmatch("172.16.0.0/12", peer_ip)
+| stats count, values(service) as services, dc(id.resp_p) as unique_ports, min(_time) as first_seen, max(_time) as last_seen by peer_ip
+| eval first_seen=strftime(first_seen, "%m/%d %H:%M"), last_seen=strftime(last_seen, "%m/%d %H:%M")
+| sort -count
+| rename peer_ip as "Internal Host", count as "Connections", services as "Services", unique_ports as "Unique Ports", first_seen as "First Seen", last_seen as "Last Seen"
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Connections">
+          <colorPalette type="minMidMax" maxColor="#DC4E41" midColor="#F8BE34" minColor="#53A051"></colorPalette>
+          <scale type="minMidMax"></scale>
+        </format>
+      </table>
+    </panel>
+  </row>
+</form>

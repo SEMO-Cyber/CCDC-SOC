@@ -1,0 +1,567 @@
+<form version="1.1">
+  <label>File Integrity Monitoring</label>
+  <description>Track file and registry changes across Linux and Windows systems</description>
+
+  <fieldset submitButton="true" autoRun="true">
+    <input type="time" token="time_token">
+      <label>Time Range</label>
+      <default>
+        <earliest>-4h@m</earliest>
+        <latest>now</latest>
+      </default>
+    </input>
+    <input type="text" token="host_filter">
+      <label>Host Filter</label>
+      <default>*</default>
+    </input>
+    <input type="text" token="path_filter">
+      <label>Path Filter</label>
+      <default>*</default>
+    </input>
+  </fieldset>
+
+  <!-- ============================================================ -->
+  <!-- Row 1: 5 KPI Score Cards -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <single>
+        <title>Total File Changes</title>
+        <search>
+          <query>
+(index=linux sourcetype=webfim host=$host_filter$ "FILE ")
+OR (index=windows sourcetype="WinEventLog:Sysmon" EventCode=11 host=$host_filter$)
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[20,100,500]</option>
+        <option name="underLabel">WebFIM + Sysmon FileCreate</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Web Root Changes</title>
+        <search>
+          <query>
+index=linux sourcetype=webfim host=$host_filter$ "FILE "
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[5,25,100]</option>
+        <option name="underLabel">WebFIM Events</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Windows File Changes</title>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Sysmon" EventCode=11 host=$host_filter$
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[10,50,200]</option>
+        <option name="underLabel">Sysmon EventCode 11</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Registry Changes</title>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Sysmon" EventCode IN (12, 13) host=$host_filter$
+| stats count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[5,25,100]</option>
+        <option name="underLabel">Sysmon EventCode 12/13</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Hosts With Changes</title>
+        <search>
+          <query>
+(index=linux sourcetype=webfim host=$host_filter$ "FILE ")
+OR (index=windows sourcetype="WinEventLog:Sysmon" EventCode IN (11, 12, 13) host=$host_filter$)
+OR (index=linux sourcetype="linux:audit" host=$host_filter$ type=SYSCALL)
+| stats dc(host) as count
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0</option>
+        <option name="rangeColors">["0x53a051","0xf8be34","0xf1813f","0xdc4e41"]</option>
+        <option name="rangeValues">[3,5,10]</option>
+        <option name="underLabel">Unique Hosts</option>
+        <option name="useColors">1</option>
+      </single>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 2: FIM Change Timeline + Changes by Host -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>FIM Change Timeline</title>
+      <chart>
+        <search>
+          <query>
+(index=linux sourcetype=webfim host=$host_filter$ "FILE ")
+OR (index=windows sourcetype="WinEventLog:Sysmon" EventCode=11 host=$host_filter$)
+OR (index=windows sourcetype="WinEventLog:Sysmon" EventCode IN (12, 13) host=$host_filter$)
+OR (index=linux sourcetype="linux:audit" host=$host_filter$ type=SYSCALL)
+| eval source_label=case(
+    sourcetype=="webfim", "WebFIM",
+    sourcetype=="WinEventLog:Sysmon" AND EventCode==11, "Sysmon File",
+    sourcetype=="WinEventLog:Sysmon" AND EventCode IN (12, 13), "Sysmon Registry",
+    sourcetype=="linux:audit", "Audit",
+    1=1, sourcetype
+)
+| timechart span=5m count by source_label
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.fieldColors">{"WebFIM":#F8BE34,"Sysmon File":#006D9C,"Sysmon Registry":#F1813F,"Audit":#708794}</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+    <panel>
+      <title>Changes by Host</title>
+      <chart>
+        <search>
+          <query>
+(index=linux sourcetype=webfim host=$host_filter$ "FILE ")
+OR (index=windows sourcetype="WinEventLog:Sysmon" EventCode IN (11, 12, 13) host=$host_filter$)
+OR (index=linux sourcetype="linux:audit" host=$host_filter$ type=SYSCALL)
+| stats count by host
+| sort -count
+| head 15
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">bar</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">none</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 3: Linux Critical Path Monitoring -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Linux Critical Path Changes</title>
+      <table>
+        <search>
+          <query>
+(index=linux sourcetype=webfim host=$host_filter$ "FILE ")
+OR (index=linux sourcetype="linux:audit" host=$host_filter$ type=PATH name=*)
+OR (index=linux sourcetype=linux_secure host=$host_filter$ ("passwd" OR "shadow" OR "sudoers" OR "authorized_keys"))
+| eval file_path=case(
+    sourcetype=="webfim", coalesce(file_path, mvindex(split(_raw, ": "), -1)),
+    sourcetype=="linux:audit", name,
+    sourcetype=="linux_secure", _raw,
+    1=1, null()
+)
+| rex field=_raw "FILE (?&lt;change_type&gt;\w+):\s+(?&lt;fim_path&gt;\S+)"
+| eval file_path=coalesce(fim_path, file_path)
+| rex field=_raw "FILE \w+:\s+\S+\s+\(old=(?&lt;old_hash&gt;\w+)\s+new=(?&lt;new_hash&gt;\w+)\)"
+| eval change_type=case(
+    isnotnull(change_type), change_type,
+    sourcetype=="linux:audit" AND syscall IN ("open", "openat", "creat"), "ACCESS/CREATE",
+    sourcetype=="linux:audit" AND syscall IN ("unlink", "unlinkat"), "DELETE",
+    sourcetype=="linux:audit" AND syscall IN ("rename", "renameat"), "RENAME",
+    sourcetype=="linux:audit" AND syscall IN ("chmod", "fchmod", "chown", "fchown"), "PERMISSION",
+    sourcetype=="linux:audit" AND syscall IN ("write", "pwrite64"), "WRITE",
+    sourcetype=="linux_secure", "REFERENCE",
+    1=1, "CHANGE"
+)
+| where isnotnull(file_path) AND file_path!=""
+| eval category=case(
+    match(file_path, "^/(usr/)?(s?bin)/"), "System Binaries",
+    match(file_path, "^/etc/(passwd|shadow|group|sudoers)") OR match(file_path, "^/etc/pam\.d/"), "Auth Files",
+    match(file_path, "^/etc/ssh/") OR match(file_path, "authorized_keys") OR match(file_path, "\.ssh/config"), "SSH Config",
+    match(file_path, "^/etc/cron") OR match(file_path, "^/var/spool/cron") OR match(file_path, "^/etc/systemd/system/"), "Cron/Systemd",
+    match(file_path, "^/boot/") OR match(file_path, "^/etc/modules") OR match(file_path, "^/etc/modprobe"), "Boot/Kernel",
+    match(file_path, "^/etc/resolv\.conf") OR match(file_path, "^/etc/hosts$") OR match(file_path, "^/etc/network/") OR match(file_path, "^/etc/sysconfig/network"), "Network Config",
+    sourcetype=="webfim", "Web Root",
+    1=1, "Other"
+)
+| eval details=case(
+    isnotnull(old_hash) AND isnotnull(new_hash), "old=" . old_hash . " new=" . new_hash,
+    sourcetype=="linux:audit", "syscall=" . syscall . " exe=" . exe,
+    1=1, substr(_raw, 1, 150)
+)
+| table _time, host, category, file_path, change_type, details
+| sort -_time
+| rename category as "Category", file_path as "File Path", change_type as "Change Type", details as "Details"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Category">
+          <colorPalette type="map">{"System Binaries":#DC4E41,"Auth Files":#DC4E41,"SSH Config":#DC4E41,"Cron/Systemd":#F1813F,"Boot/Kernel":#DC4E41,"Network Config":#F1813F,"Web Root":#F8BE34,"Other":#708794}</colorPalette>
+        </format>
+        <format type="color" field="Change Type">
+          <colorPalette type="map">{"MODIFIED":#F1813F,"ADDED":#F8BE34,"REMOVED":#DC4E41,"DELETE":#DC4E41,"WRITE":#F1813F,"PERMISSION":#F8BE34,"RENAME":#F1813F,"ACCESS/CREATE":#708794,"REFERENCE":#708794,"CHANGE":#708794}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 4: Web Root Monitoring -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Web File Changes</title>
+      <table>
+        <search>
+          <query>
+index=linux sourcetype=webfim host=$host_filter$ "FILE "
+| rex field=_raw "FILE (?&lt;change_type&gt;\w+):\s+(?&lt;file_path&gt;\S+)"
+| rex field=_raw "\(old=(?&lt;old_hash&gt;\w+)\s+new=(?&lt;new_hash&gt;\w+)\)"
+| eval detail=case(
+    isnotnull(old_hash), change_type . " (old=" . old_hash . " new=" . new_hash . ")",
+    isnotnull(change_type), change_type,
+    1=1, substr(_raw, 1, 150)
+)
+| table _time, host, file_path, detail
+| sort -_time
+| rename file_path as "File Path", detail as "Change Detail"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Change Detail">
+          <colorPalette type="map">{"ADDED":#F8BE34,"REMOVED":#DC4E41}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Potential Webshells</title>
+      <table>
+        <search>
+          <query>
+index=linux sourcetype=webfim host=$host_filter$ "FILE "
+| rex field=_raw "FILE (?&lt;change_type&gt;\w+):\s+(?&lt;file_path&gt;\S+)"
+| where match(file_path, "\.(php|jsp|aspx|py|pl|cgi|sh|phtml|php[345]|phar|war)$")
+| eval severity="CRITICAL"
+| eval detail=case(
+    change_type=="ADDED", "NEW FILE - Possible Webshell",
+    change_type=="MODIFIED", "MODIFIED - Check for injection",
+    change_type=="REMOVED", "REMOVED",
+    1=1, change_type
+)
+| table _time, host, severity, file_path, change_type, detail
+| sort -_time
+| rename severity as "Severity", file_path as "File Path", change_type as "Change Type", detail as "Assessment"
+| head 20
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Severity">
+          <colorPalette type="map">{"CRITICAL":#DC4E41}</colorPalette>
+        </format>
+        <format type="color" field="Change Type">
+          <colorPalette type="map">{"ADDED":#DC4E41,"MODIFIED":#F1813F,"REMOVED":#F8BE34}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 5: Windows File Changes (Sysmon) -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Windows Critical File Changes</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Sysmon" EventCode=11 host=$host_filter$
+| search TargetFilename IN ("*\\Windows\\System32\\*", "*\\Windows\\SysWOW64\\*", "*\\Start Menu\\Programs\\Startup\\*", "*\\Windows\\System32\\Tasks\\*", "*\\SYSVOL\\*")
+| eval category=case(
+    match(TargetFilename, "(?i)System32\\\\Tasks"), "Scheduled Tasks",
+    match(TargetFilename, "(?i)System32|SysWOW64"), "System Directory",
+    match(TargetFilename, "(?i)Startup"), "Startup Folder",
+    match(TargetFilename, "(?i)SYSVOL"), "Group Policy",
+    1=1, "Other"
+)
+| table _time, host, category, TargetFilename, Image, User
+| sort -_time
+| rename category as "Category", TargetFilename as "Target File", Image as "Creating Process"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Category">
+          <colorPalette type="map">{"System Directory":#F1813F,"Startup Folder":#DC4E41,"Scheduled Tasks":#DC4E41,"Group Policy":#DC4E41,"Other":#708794}</colorPalette>
+        </format>
+      </table>
+    </panel>
+    <panel>
+      <title>Executable File Creation</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Sysmon" EventCode=11 host=$host_filter$
+| search TargetFilename IN ("*.exe", "*.dll", "*.bat", "*.cmd", "*.ps1", "*.vbs", "*.js", "*.hta", "*.scr")
+| eval severity=case(
+    match(TargetFilename, "(?i)\.(exe|dll|scr)$"), "HIGH",
+    match(TargetFilename, "(?i)\.(ps1|vbs|hta)$"), "HIGH",
+    match(TargetFilename, "(?i)\.(bat|cmd|js)$"), "MEDIUM",
+    1=1, "MEDIUM"
+)
+| table _time, host, severity, TargetFilename, Image, User
+| sort -_time
+| rename severity as "Severity", TargetFilename as "Target File", Image as "Creating Process"
+| head 30
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">10</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Severity">
+          <colorPalette type="map">{"HIGH":#DC4E41,"MEDIUM":#F1813F}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 6: Windows Registry Monitoring (Sysmon) -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>Windows Registry Changes</title>
+      <table>
+        <search>
+          <query>
+index=windows sourcetype="WinEventLog:Sysmon" EventCode IN (12, 13) host=$host_filter$
+| eval category=case(
+    match(TargetObject, "(?i)\\\\CurrentVersion\\\\Run") OR match(TargetObject, "(?i)\\\\RunOnce"), "Autorun",
+    match(TargetObject, "(?i)\\\\Services\\\\"), "Services",
+    match(TargetObject, "(?i)Image File Execution Options"), "Image Hijack",
+    match(TargetObject, "(?i)\\\\Winlogon\\\\"), "Winlogon",
+    match(TargetObject, "(?i)KnownDLLs"), "Known DLLs",
+    match(TargetObject, "(?i)\\\\Policies\\\\") OR match(TargetObject, "(?i)SecurityProviders"), "Security",
+    match(TargetObject, "(?i)Schedule\\\\TaskCache"), "Scheduled Tasks",
+    1=1, "Other"
+)
+| eval event_type=case(
+    EventCode==12, "Create/Delete",
+    EventCode==13, "Value Set",
+    1=1, "Unknown"
+)
+| table _time, host, category, event_type, TargetObject, Details, Image
+| sort -_time
+| rename category as "Category", event_type as "Event Type", TargetObject as "Registry Key", Details as "Value", Image as "Process"
+| head 50
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Category">
+          <colorPalette type="map">{"Autorun":#DC4E41,"Services":#F1813F,"Image Hijack":#DC4E41,"Winlogon":#DC4E41,"Known DLLs":#DC4E41,"Security":#F1813F,"Scheduled Tasks":#F1813F,"Other":#708794}</colorPalette>
+        </format>
+        <format type="color" field="Event Type">
+          <colorPalette type="map">{"Create/Delete":#F1813F,"Value Set":#F8BE34,"Unknown":#708794}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 7: File Change History (Drill-down) -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>File Change History</title>
+      <table>
+        <search>
+          <query>
+(index=linux sourcetype=webfim host=$host_filter$ "FILE " "*$path_filter$*")
+OR (index=windows sourcetype="WinEventLog:Sysmon" EventCode IN (11, 2) host=$host_filter$ TargetFilename="*$path_filter$*")
+OR (index=linux sourcetype="linux:audit" host=$host_filter$ name="*$path_filter$*")
+OR (index=linux sourcetype=linux_secure host=$host_filter$ "*$path_filter$*")
+| eval source_label=case(
+    sourcetype=="webfim", "WebFIM",
+    sourcetype=="WinEventLog:Sysmon", "Sysmon",
+    sourcetype=="linux:audit", "Audit",
+    sourcetype=="linux_secure", "Secure Log",
+    1=1, sourcetype
+)
+| rex field=_raw "FILE (?&lt;change_type_w&gt;\w+):\s+(?&lt;file_path_w&gt;\S+)"
+| eval file_path=case(
+    sourcetype=="webfim", file_path_w,
+    sourcetype=="WinEventLog:Sysmon", TargetFilename,
+    sourcetype=="linux:audit", name,
+    1=1, null()
+)
+| eval change_type=case(
+    sourcetype=="webfim", change_type_w,
+    sourcetype=="WinEventLog:Sysmon" AND EventCode==11, "FileCreate",
+    sourcetype=="WinEventLog:Sysmon" AND EventCode==2, "TimeChanged",
+    sourcetype=="linux:audit", syscall,
+    sourcetype=="linux_secure", "Reference",
+    1=1, "Unknown"
+)
+| eval details=case(
+    sourcetype=="webfim", _raw,
+    sourcetype=="WinEventLog:Sysmon", "Process=" . Image . " User=" . User,
+    sourcetype=="linux:audit", "exe=" . exe . " uid=" . uid,
+    1=1, substr(_raw, 1, 200)
+)
+| table _time, host, source_label, file_path, change_type, details
+| sort +_time
+| rename source_label as "Source", file_path as "File Path", change_type as "Change Type", details as "Details"
+| head 100
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="count">15</option>
+        <option name="drilldown">none</option>
+        <option name="refresh.display">progressbar</option>
+        <format type="color" field="Source">
+          <colorPalette type="map">{"WebFIM":#F8BE34,"Sysmon":#006D9C,"Audit":#708794,"Secure Log":#F1813F}</colorPalette>
+        </format>
+        <format type="color" field="Change Type">
+          <colorPalette type="map">{"ADDED":#F8BE34,"MODIFIED":#F1813F,"REMOVED":#DC4E41,"FileCreate":#006D9C,"TimeChanged":#F1813F,"Reference":#708794}</colorPalette>
+        </format>
+      </table>
+    </panel>
+  </row>
+
+  <!-- ============================================================ -->
+  <!-- Row 8: FIM + Authentication Correlation -->
+  <!-- ============================================================ -->
+  <row>
+    <panel>
+      <title>FIM + Authentication Correlation</title>
+      <chart>
+        <search>
+          <query>
+(index=linux sourcetype=webfim host=$host_filter$ "FILE ")
+OR (index=windows sourcetype="WinEventLog:Sysmon" EventCode IN (11, 12, 13) host=$host_filter$)
+OR (index=linux sourcetype="linux:audit" host=$host_filter$ type=SYSCALL)
+OR (index=linux sourcetype=linux_secure host=$host_filter$ ("Accepted" OR "Failed password"))
+OR (index=windows sourcetype="WinEventLog:Security" EventCode IN (4624, 4625) host=$host_filter$)
+| eval event_category=case(
+    sourcetype=="webfim", "FIM",
+    sourcetype=="WinEventLog:Sysmon" AND EventCode IN (11, 12, 13), "FIM",
+    sourcetype=="linux:audit" AND type=="SYSCALL", "FIM",
+    sourcetype=="linux_secure" AND match(_raw, "Accepted"), "Auth Success",
+    sourcetype=="linux_secure" AND match(_raw, "Failed"), "Auth Failure",
+    sourcetype=="WinEventLog:Security" AND EventCode==4624, "Auth Success",
+    sourcetype=="WinEventLog:Security" AND EventCode==4625, "Auth Failure",
+    1=1, "Other"
+)
+| where event_category!="Other"
+| timechart span=1m count by event_category
+          </query>
+          <earliest>$time_token.earliest$</earliest>
+          <latest>$time_token.latest$</latest>
+          <refresh>60</refresh>
+          <refreshType>delay</refreshType>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.chart.stackMode">stacked</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.legend.placement">right</option>
+        <option name="charting.chart.showDataLabels">none</option>
+        <option name="charting.fieldColors">{"FIM":#F8BE34,"Auth Success":#53A051,"Auth Failure":#DC4E41}</option>
+        <option name="height">300</option>
+        <option name="refresh.display">progressbar</option>
+      </chart>
+    </panel>
+  </row>
+</form>
