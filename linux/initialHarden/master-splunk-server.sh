@@ -256,6 +256,7 @@ log "Creating custom indexes..."
 $SPLUNK_HOME/bin/splunk add index linux -auth "$SPLUNK_USERNAME:$SPLUNK_PASSWORD" || warn "Index 'linux' may already exist"
 $SPLUNK_HOME/bin/splunk add index windows -auth "$SPLUNK_USERNAME:$SPLUNK_PASSWORD" || warn "Index 'windows' may already exist"
 $SPLUNK_HOME/bin/splunk add index network -auth "$SPLUNK_USERNAME:$SPLUNK_PASSWORD" || warn "Index 'network' may already exist"
+$SPLUNK_HOME/bin/splunk add index sysmon -auth "$SPLUNK_USERNAME:$SPLUNK_PASSWORD" || warn "Index 'sysmon' may already exist"
 
 # ============================================================================
 # PHASE 3: SPLUNK CONFIGURATION
@@ -595,6 +596,27 @@ if [[ -n "${SPLUNKBASE_USER:-}" ]] && [[ -n "${SPLUNKBASE_PASS:-}" ]]; then
     done
 
     log "Add-on installation: $ADDON_SUCCESS installed, $ADDON_SKIP skipped, $ADDON_FAIL failed"
+
+    # Override Sysmon TA index routing — keep Sysmon events in the 'windows' index
+    # The Splunk_TA_microsoft_sysmon ships transforms that route to a 'sysmon' index.
+    # We override the transform regex in local/ so it never matches, letting events
+    # stay in whatever index the forwarder's inputs.conf specifies (windows).
+    if [[ -d "$SPLUNK_HOME/etc/apps/Splunk_TA_microsoft_sysmon" ]]; then
+        SYSMON_TA_LOCAL="$SPLUNK_HOME/etc/apps/Splunk_TA_microsoft_sysmon/local"
+        mkdir -p "$SYSMON_TA_LOCAL"
+        log "Overriding Sysmon TA index routing to keep events in 'windows' index..."
+        cat > "$SYSMON_TA_LOCAL/transforms.conf" << 'SYSMON_TRANSFORMS'
+# Override: disable the default index routing so Sysmon events
+# stay in whatever index the forwarder specifies (windows).
+# The default TA uses REGEX = . which matches everything and
+# reroutes to index=sysmon. We replace with a never-match regex.
+[sysmon-eventtype-index]
+REGEX = DISABLED_BY_CCDC_OVERRIDE
+DEST_KEY = _MetaData:Index
+FORMAT = sysmon
+SYSMON_TRANSFORMS
+        chown -R splunk:splunk "$SYSMON_TA_LOCAL"
+    fi
 
     # Restart Splunk to load add-ons
     log "Restarting Splunk to load add-ons..."
